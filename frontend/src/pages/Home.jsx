@@ -86,37 +86,27 @@ const Home = () => {
             </div>
           </div>
         </div>
+        <br />
 
         {/* 🔽 CTA SECTION (OUTSIDE IMAGE) */}
-        <div className="mt-8 flex flex-col items-center text-center">
+        <div className="flex flex-col items-center text-center gap-3">
           <button
             onClick={startMatching}
-            className="px-10 py-3 rounded-full text-sm font-semibold
-                       bg-gradient-to-r from-blue-600 to-indigo-600
-                       shadow-xl
-                       hover:scale-[1.05] active:scale-[0.97]
-                       transition-all duration-200
-                       focus:outline-none focus-visible:ring-2
-                       focus-visible:ring-indigo-400"
+            className="px-8 py-3 rounded-md text-sm font-medium
+             bg-indigo-600 text-white
+             hover:bg-indigo-700"
           >
-            🌐 Start Random Chat
+            Start Random Chat
           </button>
-          <br />
+
+
+
           {/* 🎥 VIDEO COMING SOON */}
-          <button className="px-10 py-3 rounded-full text-sm font-semibold
-                       bg-gradient-to-r from-blue-600 to-indigo-600
-                       shadow-xl
-                       hover:scale-[1.05] active:scale-[0.97]
-                       transition-all duration-200
-                       focus:outline-none focus-visible:ring-2
-                       focus-visible:ring-indigo-400">
+          <span className="text-sm text-white/70">
             🎥 Video call coming soon
-          </button>
-
-
-
-
+          </span>
         </div>
+
 
         <Header />
       </div>
