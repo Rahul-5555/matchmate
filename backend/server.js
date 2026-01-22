@@ -6,25 +6,61 @@ const cors = require("cors");
 const app = express();
 
 /* ✅ HTTP CORS (SAFE FOR DEV) */
+// app.use(
+//   cors({
+//     origin: true,
+//     origin: allowedOrigins,
+//     credentials: true,
+//   })
+// );
+
+// const server = http.createServer(app);
+
+// /* ✅ SOCKET.IO CONFIG (DO NOT FORCE WEBSOCKET) */
+// const io = new Server(server, {
+//   cors: {
+//     origin: true,
+//     origin: allowedOrigins,
+//     credentials: true,
+//   },
+//   transports: ["polling", "websocket"],
+//   allowUpgrades: true,
+// });
+
+/* ✅ HTTP CORS (PROD SAFE) */
 app.use(
   cors({
-    origin: true,
-    // origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // allow REST tools & server-to-server
+      if (!origin) return callback(null, true);
+
+      const allowedOrigins = [
+        "http://localhost:5173",
+        "https://matchmatee.netlify.app",
+      ];
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS not allowed"));
+      }
+    },
     credentials: true,
   })
 );
 
 const server = http.createServer(app);
 
-/* ✅ SOCKET.IO CONFIG (DO NOT FORCE WEBSOCKET) */
+/* ✅ SOCKET.IO CORS (IMPORTANT) */
 const io = new Server(server, {
   cors: {
-    origin: true,
-    // origin: allowedOrigins,
+    origin: [
+      "http://localhost:5173",
+      "https://matchmatee.netlify.app",
+    ],
     credentials: true,
   },
   transports: ["polling", "websocket"],
-  allowUpgrades: true,
 });
 
 /* 🔥 STATE */
