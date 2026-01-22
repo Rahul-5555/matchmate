@@ -1,8 +1,18 @@
 import { useRef, useState } from "react";
 
 const ICE_SERVERS = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+
+    // 🔥 TURN (TEST / FREE)
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ],
 };
+
 
 const CALL_DURATION_MS = 10 * 15 * 1000;
 // 🔁 PROD: 10 * 60 * 1000
