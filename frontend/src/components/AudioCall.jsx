@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import useWebRTC from "../hooks/useWebRTC";
 import useVoiceActivity from "../hooks/useVoiceActivity";
 
-const CALL_DURATION = 10 * 60; // 10 minutes (seconds)
+const CALL_DURATION = 10 * 60; // 10 minutes
 
 const AudioCall = ({ socket, matchId, onEnd }) => {
   const {
@@ -22,9 +22,8 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
   const startedRef = useRef(false);
   const endedRef = useRef(false);
   const timerRef = useRef(null);
-  const remoteAudioRef = useRef(null);
 
-  /* ❌ END CALL — SINGLE SOURCE OF TRUTH */
+  /* ❌ END CALL (ONLY PLACE WHERE onEnd IS CALLED) */
   const handleEnd = useCallback(() => {
     if (endedRef.current) return;
     endedRef.current = true;
@@ -35,27 +34,25 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
     }
 
     endCall();
-    onEnd?.();
+    onEnd?.(); // ⬅️ parent navigation
   }, [endCall, onEnd]);
 
-  /* ▶️ START CALL (ONCE ONLY) */
+  /* ▶️ START CALL ONCE */
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
 
     startCall();
-
-    return () => {
-      handleEnd(); // 🧹 hard cleanup on unmount
-    };
-  }, [startCall, handleEnd]);
+  }, [startCall]);
 
   /* ⏱ TIMER */
   useEffect(() => {
+    if (timerRef.current) return;
+
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          handleEnd(); // ⛔ auto end at 0
+          handleEnd();
           return 0;
         }
         return prev - 1;
@@ -70,17 +67,6 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
     };
   }, [handleEnd]);
 
-  /* 🔊 FORCE REMOTE AUDIO PLAY (IMPORTANT) */
-  useEffect(() => {
-    if (remoteAudioRef.current && remoteStream) {
-      remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current
-        .play()
-        .then(() => console.log("🔊 Remote audio playing"))
-        .catch(() => console.warn("🔇 Autoplay blocked"));
-    }
-  }, [remoteStream]);
-
   const formatTime = (sec) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
@@ -88,22 +74,19 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-slate-950 to-black text-white">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gradient-to-br from-slate-950 to-black text-white">
       <div className="w-[92%] max-w-sm rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl p-6 flex flex-col items-center gap-6">
 
-        {/* 🔊 TITLE */}
-        <h2 className="text-lg font-semibold tracking-wide">
-          Audio Call
-        </h2>
+        <h2 className="text-lg font-semibold">🔊 Audio Call</h2>
 
-        {/* ⏱ TIMER */}
+        {/* TIMER */}
         <div className="text-4xl font-extrabold text-yellow-400">
           {formatTime(timeLeft)}
         </div>
 
-        {/* 🎙 SPEAKING INDICATOR */}
+        {/* VOICE ACTIVITY */}
         <div
-          className={`px-4 py-1 rounded-full text-sm font-medium transition-all
+          className={`px-4 py-1 rounded-full text-sm font-medium
             ${isSpeaking
               ? "bg-green-500/20 text-green-400 animate-pulse"
               : "bg-white/10 text-gray-400"
@@ -112,14 +95,13 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
           {isSpeaking ? "Speaking…" : "Silent"}
         </div>
 
-        {/* 🎤 MIC STATUS */}
         {!isMicReady && (
           <span className="text-xs text-white/60">
             Connecting microphone…
           </span>
         )}
 
-        {/* 🎤 LOCAL AUDIO (muted) */}
+        {/* AUDIO */}
         {localStream && (
           <audio
             autoPlay
@@ -129,16 +111,20 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
           />
         )}
 
-        {/* 🔊 REMOTE AUDIO */}
-        <audio ref={remoteAudioRef} playsInline />
+        {remoteStream && (
+          <audio
+            autoPlay
+            playsInline
+            ref={(el) => el && (el.srcObject = remoteStream)}
+          />
+        )}
 
-        {/* 🎛 CONTROLS */}
+        {/* CONTROLS */}
         <div className="flex gap-6 mt-4">
-          {/* MUTE */}
           <button
             onClick={toggleMute}
             disabled={!isMicReady}
-            className={`w-14 h-14 rounded-full flex items-center justify-center text-xl transition
+            className={`w-14 h-14 rounded-full text-xl
               ${isMicReady
                 ? "bg-slate-700 hover:bg-slate-600"
                 : "bg-slate-600 opacity-50"
@@ -147,18 +133,16 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
             {isMuted ? "🔈" : "🔇"}
           </button>
 
-          {/* END */}
           <button
             onClick={handleEnd}
-            className="w-14 h-14 rounded-full flex items-center justify-center text-xl bg-red-600 hover:bg-red-500"
+            className="w-14 h-14 rounded-full text-xl bg-red-600 hover:bg-red-500"
           >
             📞
           </button>
         </div>
 
-        {/* FOOTER */}
-        <p className="text-xs text-white/40 mt-2">
-          Call will end automatically
+        <p className="text-xs text-white/40">
+          Call ends automatically
         </p>
       </div>
     </div>
