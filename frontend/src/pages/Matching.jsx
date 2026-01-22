@@ -4,7 +4,7 @@ const Matching = ({ socket, onMatched }) => {
   const hasRequestedMatch = useRef(false);
   const [dots, setDots] = useState("");
 
-  // 🔁 UI animation only (logic independent)
+  /* 🔁 UI animation */
   useEffect(() => {
     const interval = setInterval(() => {
       setDots((prev) => (prev.length === 3 ? "" : prev + "."));
@@ -13,23 +13,50 @@ const Matching = ({ socket, onMatched }) => {
     return () => clearInterval(interval);
   }, []);
 
+  /* 🔌 MATCHING LOGIC */
   useEffect(() => {
     if (!socket) return;
 
-    // 🔒 ensure find_match runs only once
+    // 🔒 emit find_match only once
     if (!hasRequestedMatch.current) {
       socket.emit("find_match");
       hasRequestedMatch.current = true;
+      console.log("📤 find_match emitted");
     }
 
-    const handleMatchFound = () => {
-      onMatched();
+    const handleMatchFound = (data) => {
+      if (!data || !data.matchId) {
+        console.warn("⚠️ match_found without matchId", data);
+        return;
+      }
+      onMatched(data.matchId);
+    };
+
+    // 🧹 SAFETY HANDLERS
+    const handlePartnerLeft = () => {
+      console.log("⚠️ partner_left while matching");
+      hasRequestedMatch.current = false;
+      socket.emit("find_match"); // retry safely
+    };
+
+    const handleTimeout = () => {
+      console.log("⏱️ match_timeout while matching");
+      hasRequestedMatch.current = false;
+      socket.emit("find_match");
     };
 
     socket.on("match_found", handleMatchFound);
+    socket.on("partner_left", handlePartnerLeft);
+    socket.on("match_timeout", handleTimeout);
 
     return () => {
       socket.off("match_found", handleMatchFound);
+      socket.off("partner_left", handlePartnerLeft);
+      socket.off("match_timeout", handleTimeout);
+
+      // 🔴 VERY IMPORTANT CLEANUP
+      hasRequestedMatch.current = false;
+      socket.emit("leave-room"); // safe no-op if not in room
     };
   }, [socket, onMatched]);
 
@@ -58,28 +85,14 @@ const Matching = ({ socket, onMatched }) => {
           boxShadow: "0 20px 40px rgba(0,0,0,0.45)",
         }}
       >
-        {/* TITLE */}
-        <h2
-          style={{
-            fontSize: "20px",
-            fontWeight: "600",
-          }}
-        >
+        <h2 style={{ fontSize: "20px", fontWeight: "600" }}>
           Finding opponent{dots}
         </h2>
 
-        {/* SUBTEXT */}
-        <p
-          style={{
-            marginTop: "10px",
-            fontSize: "14px",
-            opacity: 0.7,
-          }}
-        >
+        <p style={{ marginTop: "10px", fontSize: "14px", opacity: 0.7 }}>
           Looking for a random opponent
         </p>
 
-        {/* LOADER */}
         <div
           style={{
             marginTop: "28px",
@@ -101,19 +114,11 @@ const Matching = ({ socket, onMatched }) => {
           />
         </div>
 
-        {/* FOOTER */}
-        <p
-          style={{
-            marginTop: "22px",
-            fontSize: "12px",
-            opacity: 0.4,
-          }}
-        >
+        <p style={{ marginTop: "22px", fontSize: "12px", opacity: 0.4 }}>
           This usually takes a few seconds
         </p>
       </div>
 
-      {/* KEYFRAMES (UI ONLY) */}
       <style>
         {`
           @keyframes loading {
