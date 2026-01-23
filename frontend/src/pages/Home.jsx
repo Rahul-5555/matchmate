@@ -7,7 +7,8 @@ import Chat from "../pages/Chat";
 
 import heroImg from "../assets/heroS.png";
 import Header from "../components/Header";
-
+import ThemeToggle from "../components/ThemeToggle";
+import TypingText from "../components/TypingText";
 
 const Home = () => {
   const [stage, setStage] = useState("home");
@@ -73,16 +74,20 @@ const Home = () => {
         </span>
       </div>
 
+      {/* 🌗 THEME TOGGLE */}
+      <div className="absolute top-4 right-4 z-50">
+        <ThemeToggle />
+      </div>
 
       {/* 🏠 PAGE */}
       <div
         className="
           min-h-screen
+          flex flex-col items-center justify-center
+          pt-28 px-4
           bg-gradient-to-br
           from-white to-slate-100
           dark:from-slate-950 dark:to-slate-900
-          flex flex-col items-center justify-center
-          pt-28 px-4
           text-slate-900 dark:text-white
         "
       >
@@ -127,10 +132,13 @@ const Home = () => {
               </span>
             </h1>
 
-            <p className="mt-3 text-sm sm:text-base text-slate-700 dark:text-white/85">
-              Meet random people worldwide. No login. No profile.
-              Just honest conversations.
+            <p className="
+    mt-3 text-sm sm:text-base
+    text-slate-600 dark:text-white/85
+    animate-fadeIn
+  ">Meet random people worldwide. No login. No profile. Just honest conversations.
             </p>
+            {/* <TypingText text="Meet random people worldwide. No login. No profile. Just honest conversations."/> */}
 
             <div className="mt-4">
               {socket && <StatBar socket={socket} />}
@@ -138,11 +146,11 @@ const Home = () => {
           </div>
         </div>
 
-        <br />
+        <div className="h-6" />
 
         {/* 🔽 CTA SECTION */}
         <div className="flex flex-col items-center text-center gap-3">
-          {/* 🎯 START CHAT */}
+          {/* 💬 START CHAT */}
           <button
             onClick={() => {
               setMode("chat");

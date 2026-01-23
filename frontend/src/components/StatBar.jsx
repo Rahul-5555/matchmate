@@ -15,19 +15,29 @@ const StatBar = ({ socket }) => {
   }, [socket]);
 
   return (
-    <div className="mt-7 mx-auto w-full max-w-md rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl px-4 py-3 flex items-center justify-between shadow-lg">
-
+    <div
+      className="
+        mt-7 mx-auto w-full max-w-md
+        rounded-2xl
+        px-4 py-3
+        flex items-center justify-between
+        backdrop-blur-xl
+        bg-white/80 dark:bg-white/5
+        border border-slate-200 dark:border-white/10
+        shadow-sm dark:shadow-lg
+      "
+    >
       {/* 👥 ONLINE COUNT */}
-      <div className="flex items-center gap-2 text-sm font-medium text-white">
+      <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-white">
         <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-400" />
+          <span className="absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-60 animate-ping" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
         </span>
         <span>{online} Online</span>
       </div>
 
       {/* 🔴 MATCHING STATUS */}
-      <div className="flex items-center gap-2 text-sm text-white/70">
+      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-white/70">
         <span className="relative flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 animate-pulse" />
         </span>

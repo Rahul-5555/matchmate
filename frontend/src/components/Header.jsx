@@ -1,23 +1,30 @@
 import React from "react";
+
 const Header = () => {
   return (
-    <div style={{ textAlign: "center", marginTop: "12px" }}>
+    <div className="mt-4 text-center">
+      {/* LOGO / TITLE */}
       <h1
-        style={{
-          fontSize: "34px",
-          fontWeight: "700",
-          letterSpacing: "1px",
-        }}
+        className="
+          text-2xl sm:text-3xl
+          font-extrabold
+          tracking-wide
+          text-slate-900
+          dark:text-white
+        "
       >
-        ♞ MatchMate
+        ♟ MatchMate
       </h1>
 
+      {/* TAGLINE */}
       <p
-        style={{
-          marginTop: "8px",
-          opacity: 0.7,
-          fontSize: "14px",
-        }}
+        className="
+          mt-2
+          text-sm
+          text-slate-600
+          dark:text-white/70
+          tracking-wide
+        "
       >
         Connect. Talk. Disconnect.
       </p>
@@ -26,4 +33,3 @@ const Header = () => {
 };
 
 export default Header;
-

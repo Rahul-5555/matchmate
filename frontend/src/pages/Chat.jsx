@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import ChatAudioController from "./ChatAudioController";
 
-
 const Chat = ({ socket, onEnd, matchId, mode }) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
@@ -21,7 +20,6 @@ const Chat = ({ socket, onEnd, matchId, mode }) => {
   /* 🔽 JOIN / LEAVE ROOM */
   useEffect(() => {
     if (!socket || !matchId) return;
-
     socket.emit("join-room", matchId);
     return () => socket.emit("leave-room", matchId);
   }, [socket, matchId]);
@@ -81,15 +79,26 @@ const Chat = ({ socket, onEnd, matchId, mode }) => {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#020617", color: "white", display: "flex", flexDirection: "column" }}>
+    <div className="h-screen flex flex-col bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
 
       {/* HEADER */}
-      <div style={{ padding: "14px", display: "flex", justifyContent: "space-between" }}>
-        <span>🟢 Connected {mode === "audio" && "• Audio"}</span>
-        <button onClick={cleanupAndExit}>End</button>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/10">
+        <div className="text-sm">
+          🟢 Connected {mode === "audio" && "• Audio"}
+          {partnerMuted && (
+            <div className="text-xs opacity-60">🔇 Partner muted</div>
+          )}
+        </div>
+
+        <button
+          onClick={cleanupAndExit}
+          className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+        >
+          End
+        </button>
       </div>
 
-      {/* 🔊 AUDIO CONTROLLER */}
+      {/* 🔊 AUDIO CONTROLLER (does NOT block chat) */}
       <ChatAudioController
         socket={socket}
         matchId={matchId}
@@ -98,19 +107,44 @@ const Chat = ({ socket, onEnd, matchId, mode }) => {
         setAudioOn={setAudioOn}
       />
 
-      {/* 💬 CHAT */}
-      <div style={{ flex: 1, padding: "16px", overflowY: "auto" }}>
+      {/* 💬 CHAT MESSAGES */}
+      <div
+        className="
+          flex-1 min-h-0
+          overflow-y-auto
+          px-4 py-3
+          flex flex-col gap-2
+        "
+      >
         {messages.map((m, i) => (
-          <div key={i} style={{ textAlign: m.from === "me" ? "right" : "left" }}>
+          <div
+            key={i}
+            className={`max-w-[75%] px-3 py-2 rounded-xl text-sm
+              ${m.from === "me"
+                ? "self-end bg-indigo-600 text-white"
+                : "self-start bg-slate-200 dark:bg-white/10"
+              }
+            `}
+          >
             {m.text}
           </div>
         ))}
-        {isTyping && <small>Typing…</small>}
+
+        {isTyping && (
+          <span className="text-xs opacity-60">Typing…</span>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
-      {/* INPUT */}
-      <div style={{ display: "flex", padding: "12px", gap: "8px" }}>
+      {/* ⌨️ INPUT */}
+      <div className="
+        flex items-center gap-3
+        p-3
+        border-t
+        border-slate-200 dark:border-white/10
+        bg-white dark:bg-slate-900
+      ">
         <input
           value={text}
           onChange={(e) => {
@@ -123,14 +157,39 @@ const Chat = ({ socket, onEnd, matchId, mode }) => {
             );
           }}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          style={{ flex: 1 }}
+          placeholder="Type a message…"
+          className="
+            flex-1
+            px-4 py-2
+            rounded-xl
+            text-sm
+            bg-slate-100 dark:bg-white/10
+            text-slate-900 dark:text-white
+            placeholder-slate-500 dark:placeholder-white/40
+            outline-none
+            border border-slate-300 dark:border-white/10
+            focus:ring-2 focus:ring-indigo-500/50
+          "
         />
-        <button onClick={sendMessage}>Send</button>
+
+        <button
+          onClick={sendMessage}
+          className="
+            px-5 py-2
+            rounded-xl
+            text-sm font-medium
+            text-white
+            bg-indigo-600
+            hover:bg-indigo-700
+            active:scale-95
+            transition
+          "
+        >
+          Send
+        </button>
       </div>
     </div>
   );
 };
 
 export default Chat;
-
-

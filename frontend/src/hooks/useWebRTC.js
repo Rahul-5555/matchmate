@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 const ICE_SERVERS = {
   iceServers: [
@@ -11,133 +11,130 @@ const ICE_SERVERS = {
   ],
 };
 
-const CALL_DURATION_MS = 10 * 60 * 1000;
-
 const useWebRTC = (socket, matchId) => {
   const pcRef = useRef(null);
   const micTrackRef = useRef(null);
-  const callTimerRef = useRef(null);
+  const pendingIceRef = useRef([]);
 
   const startedRef = useRef(false);
-  const listenersAttachedRef = useRef(false);
 
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isMicReady, setIsMicReady] = useState(false);
 
-  const startCall = async () => {
+  /* 🔌 CREATE PEER CONNECTION */
+  const createPeerConnection = useCallback(() => {
+    const pc = new RTCPeerConnection(ICE_SERVERS);
+
+    pc.ontrack = (e) => {
+      const remote = e.streams[0];
+      setRemoteStream(remote);
+    };
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        socket.emit("ice-candidate", {
+          matchId,
+          candidate: e.candidate,
+        });
+      }
+    };
+
+    pcRef.current = pc;
+    return pc;
+  }, [socket, matchId]);
+
+  /* ▶️ START CALL */
+  const startCall = useCallback(async () => {
     if (!socket || !matchId) return;
     if (startedRef.current) return;
 
     startedRef.current = true;
 
-    /* 🔌 CREATE PEER CONNECTION */
-    const pc = new RTCPeerConnection(ICE_SERVERS);
-    pcRef.current = pc;
+    const pc = createPeerConnection();
 
-    /* 🎤 GET MIC */
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log("🎤 MIC STREAM READY");
-
-    const audioTrack = stream.getAudioTracks()[0];
-    micTrackRef.current = audioTrack;
-    setIsMicReady(true);
-    setLocalStream(stream);
-
-    /* ➕ ADD TRACKS SAFELY */
-    stream.getTracks().forEach((track) => {
-      if (!pcRef.current) return;
-      pcRef.current.addTrack(track, stream);
+    /* 🎤 MIC */
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
     });
 
-    /* 🔊 REMOTE AUDIO */
-    pc.ontrack = (event) => {
-      console.log("🔊 Remote track received");
-      const remote = event.streams[0];
-      setRemoteStream(remote);
+    const track = stream.getAudioTracks()[0];
+    micTrackRef.current = track;
 
-      // 🔥 force play (browser autoplay fix)
-      const audio = new Audio();
-      audio.srcObject = remote;
-      audio.autoplay = true;
-      audio.playsInline = true;
-      audio.play().catch(() => { });
+    setLocalStream(stream);
+    setIsMicReady(true);
+
+    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+  }, [socket, matchId, createPeerConnection]);
+
+  /* 🔐 SOCKET SIGNALING (CLEAN & SAFE) */
+  useEffect(() => {
+    if (!socket) return;
+
+    const onOffer = async ({ offer }) => {
+      if (!pcRef.current) createPeerConnection();
+
+      const pc = pcRef.current;
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // 🔥 apply queued ICE
+      for (const ice of pendingIceRef.current) {
+        await pc.addIceCandidate(ice);
+      }
+      pendingIceRef.current = [];
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("answer", { matchId, answer });
     };
 
-    /* ❄️ ICE */
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("ice-candidate", {
-          matchId,
-          candidate: event.candidate,
-        });
+    const onAnswer = async ({ answer }) => {
+      if (!pcRef.current) return;
+
+      const pc = pcRef.current;
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+      for (const ice of pendingIceRef.current) {
+        await pc.addIceCandidate(ice);
+      }
+      pendingIceRef.current = [];
+    };
+
+    const onIce = async ({ candidate }) => {
+      if (!pcRef.current || !candidate) return;
+
+      const pc = pcRef.current;
+      if (pc.remoteDescription) {
+        await pc.addIceCandidate(candidate);
+      } else {
+        pendingIceRef.current.push(candidate);
       }
     };
 
-    /* 🔐 SOCKET LISTENERS (ONCE) */
-    if (!listenersAttachedRef.current) {
-      listenersAttachedRef.current = true;
-
-      socket.on("offer", async ({ offer }) => {
-        if (!pcRef.current) return;
-
-        console.log("📡 Offer received");
-        await pcRef.current.setRemoteDescription(
-          new RTCSessionDescription(offer)
-        );
-
-        const answer = await pcRef.current.createAnswer();
-        await pcRef.current.setLocalDescription(answer);
-        socket.emit("answer", { matchId, answer });
-      });
-
-      socket.on("answer", async ({ answer }) => {
-        if (!pcRef.current) return;
-
-        console.log("📡 Answer received");
-        await pcRef.current.setRemoteDescription(
-          new RTCSessionDescription(answer)
-        );
-      });
-
-      socket.on("ice-candidate", async ({ candidate }) => {
-        if (!pcRef.current) return;
-        try {
-          await pcRef.current.addIceCandidate(candidate);
-        } catch (e) {
-          console.error("ICE error", e);
-        }
-      });
-
-      socket.on("call-ended", () => {
-        console.log("📴 Partner ended call");
-        endCall(false);
-      });
-    }
-
-    /* 🚀 DETERMINISTIC CALLER */
-    const isCaller = socket.id === matchId.split("_")[1];
-
-    if (isCaller) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit("offer", { matchId, offer });
-      console.log("🚀 Offer sent");
-    } else {
-      console.log("⏳ Waiting for offer");
-    }
-
-    /* ⏱ AUTO END */
-    callTimerRef.current = setTimeout(() => {
-      console.log("⏱️ Call time over");
-      socket.emit("call-ended", { matchId });
+    const onCallEnd = () => {
       endCall(false);
-    }, CALL_DURATION_MS);
-  };
+    };
+
+    socket.on("offer", onOffer);
+    socket.on("answer", onAnswer);
+    socket.on("ice-candidate", onIce);
+    socket.on("call-ended", onCallEnd);
+
+    return () => {
+      socket.off("offer", onOffer);
+      socket.off("answer", onAnswer);
+      socket.off("ice-candidate", onIce);
+      socket.off("call-ended", onCallEnd);
+    };
+  }, [socket, matchId, createPeerConnection]);
 
   /* 🔇 MUTE */
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (!micTrackRef.current) return;
 
     const enabled = micTrackRef.current.enabled;
@@ -145,30 +142,31 @@ const useWebRTC = (socket, matchId) => {
     setIsMuted(enabled);
 
     socket.emit(enabled ? "mute" : "unmute");
-  };
+  }, [socket]);
 
   /* ❌ END CALL */
-  const endCall = (emit = true) => {
-    if (callTimerRef.current) {
-      clearTimeout(callTimerRef.current);
-      callTimerRef.current = null;
-    }
+  const endCall = useCallback(
+    (emit = true) => {
+      startedRef.current = false;
+      pendingIceRef.current = [];
 
-    startedRef.current = false;
-    listenersAttachedRef.current = false;
+      if (pcRef.current) {
+        pcRef.current.getSenders().forEach((s) => s.track && s.track.stop());
+        pcRef.current.close();
+        pcRef.current = null;
+      }
 
-    pcRef.current?.close();
-    pcRef.current = null;
+      localStream?.getTracks().forEach((t) => t.stop());
 
-    localStream?.getTracks().forEach((t) => t.stop());
+      setLocalStream(null);
+      setRemoteStream(null);
+      setIsMuted(false);
+      setIsMicReady(false);
 
-    setLocalStream(null);
-    setRemoteStream(null);
-    setIsMuted(false);
-    setIsMicReady(false);
-
-    if (emit) socket.emit("call-ended", { matchId });
-  };
+      if (emit) socket.emit("call-ended", { matchId });
+    },
+    [socket, matchId, localStream]
+  );
 
   return {
     localStream,

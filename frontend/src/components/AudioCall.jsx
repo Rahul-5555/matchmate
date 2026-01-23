@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import useWebRTC from "../hooks/useWebRTC";
 import useVoiceActivity from "../hooks/useVoiceActivity";
 
-const CALL_DURATION = 10 * 60; // 10 minutes
+const CALL_DURATION = 10 * 60;
 
 const AudioCall = ({ socket, matchId, onEnd }) => {
   const {
@@ -16,14 +16,21 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
   } = useWebRTC(socket, matchId);
 
   const { isSpeaking } = useVoiceActivity(localStream);
-
   const [timeLeft, setTimeLeft] = useState(CALL_DURATION);
 
   const startedRef = useRef(false);
   const endedRef = useRef(false);
   const timerRef = useRef(null);
+  const remoteAudioRef = useRef(null);
 
-  /* ❌ END CALL (ONLY PLACE WHERE onEnd IS CALLED) */
+  /* 🔄 RESET ON NEW MATCH */
+  useEffect(() => {
+    startedRef.current = false;
+    endedRef.current = false;
+    setTimeLeft(CALL_DURATION);
+  }, [matchId]);
+
+  /* ❌ END CALL (ONLY PLACE) */
   const handleEnd = useCallback(() => {
     if (endedRef.current) return;
     endedRef.current = true;
@@ -33,22 +40,27 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
       timerRef.current = null;
     }
 
-    endCall();
-    onEnd?.(); // ⬅️ parent navigation
+    endCall(true);
+    onEnd?.();
   }, [endCall, onEnd]);
 
-  /* ▶️ START CALL ONCE */
+  /* ▶️ START CALL (MOUNT ONLY) */
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-
     startCall();
   }, [startCall]);
 
-  /* ⏱ TIMER */
+  /* 🔔 REMOTE CALL END */
   useEffect(() => {
-    if (timerRef.current) return;
+    if (!socket) return;
 
+    socket.on("call-ended", handleEnd);
+    return () => socket.off("call-ended", handleEnd);
+  }, [socket, handleEnd]);
+
+  /* ⏱ TIMER (SAFE) */
+  useEffect(() => {
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -67,6 +79,14 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
     };
   }, [handleEnd]);
 
+  /* 🔊 ENSURE REMOTE AUDIO PLAY */
+  useEffect(() => {
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch(() => { });
+    }
+  }, [remoteStream]);
+
   const formatTime = (sec) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
@@ -79,12 +99,10 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
 
         <h2 className="text-lg font-semibold">🔊 Audio Call</h2>
 
-        {/* TIMER */}
         <div className="text-4xl font-extrabold text-yellow-400">
           {formatTime(timeLeft)}
         </div>
 
-        {/* VOICE ACTIVITY */}
         <div
           className={`px-4 py-1 rounded-full text-sm font-medium
             ${isSpeaking
@@ -101,25 +119,18 @@ const AudioCall = ({ socket, matchId, onEnd }) => {
           </span>
         )}
 
-        {/* AUDIO */}
         {localStream && (
-          <audio
-            autoPlay
-            muted
-            playsInline
-            ref={(el) => el && (el.srcObject = localStream)}
-          />
+          <audio autoPlay muted playsInline ref={(el) => el && (el.srcObject = localStream)} />
         )}
 
         {remoteStream && (
           <audio
+            ref={remoteAudioRef}
             autoPlay
             playsInline
-            ref={(el) => el && (el.srcObject = remoteStream)}
           />
         )}
 
-        {/* CONTROLS */}
         <div className="flex gap-6 mt-4">
           <button
             onClick={toggleMute}
