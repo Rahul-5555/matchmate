@@ -1,140 +1,128 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import useVoiceActivity from "../hooks/useVoiceActivity";
+import { useEffect, useRef, useState } from "react";
 
 const CALL_DURATION = 10 * 60;
 
-const AudioCall = ({
-  localStream,
-  remoteStream,
-  toggleMute,
-  isMuted,
-  isMicReady,
-  onEnd,
-}) => {
-  const { isSpeaking } = useVoiceActivity(localStream);
+const AudioCall = ({ webrtc, onEnd }) => {
+  const { localStream, remoteStream, isMuted, toggleMute } = webrtc;
 
   const [timeLeft, setTimeLeft] = useState(CALL_DURATION);
-
   const endedRef = useRef(false);
-  const timerRef = useRef(null);
+  const shouldEndRef = useRef(false);
+
+  const localAudioRef = useRef(null);
   const remoteAudioRef = useRef(null);
 
-  /* ⏱️ START TIMER ON MOUNT */
+  /* 🔊 Attach audio streams */
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          handleEnd();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, []);
-
-  /* ❌ SAFE END */
-  const handleEnd = useCallback(() => {
-    if (endedRef.current) return;
-    endedRef.current = true;
-
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+    if (localStream && localAudioRef.current) {
+      localAudioRef.current.srcObject = localStream;
+      localAudioRef.current.muted = true;
     }
+  }, [localStream]);
 
-    onEnd?.();
-  }, [onEnd]);
-
-  /* 🔊 REMOTE AUDIO */
   useEffect(() => {
-    if (remoteAudioRef.current && remoteStream) {
+    if (remoteStream && remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.play().catch(() => { });
     }
   }, [remoteStream]);
 
-  const formatTime = (sec) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
+  /* ⏱ Timer (safe) */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          shouldEndRef.current = true;
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  /* 🛑 End after render */
+  useEffect(() => {
+    if (shouldEndRef.current && !endedRef.current) {
+      endedRef.current = true;
+      onEnd?.();
+    }
+  });
+
+  const formatTime = (t) => {
+    const m = Math.floor(t / 60);
+    const s = t % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const isEndingSoon = timeLeft <= 30;
-
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black text-white">
-      <div className="w-[92%] max-w-sm rounded-3xl bg-white/5 p-6 flex flex-col items-center gap-6">
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[92%] max-w-sm bg-black/80 backdrop-blur-xl text-white rounded-3xl px-5 py-4 shadow-2xl z-[9999]">
+      {/* AUDIO */}
+      <audio ref={localAudioRef} autoPlay />
+      <audio ref={remoteAudioRef} autoPlay />
 
-        <h2 className="text-lg font-semibold">🔊 Audio Call</h2>
-
-        {/* ⏱️ TIMER */}
-        <div
-          className={`text-4xl font-bold ${isEndingSoon
-            ? "text-red-400 animate-pulse"
-            : "text-yellow-400"
-            }`}
-        >
-          {formatTime(timeLeft)}
-        </div>
-
-        {/* 🎙️ SPEAKING INDICATOR */}
-        <div
-          className={`px-4 py-1 rounded-full text-sm ${isSpeaking
-            ? "bg-green-500/20 text-green-400 animate-pulse"
-            : "bg-white/10 text-gray-400"
-            }`}
-        >
-          {isSpeaking ? "Speaking…" : "Silent"}
-        </div>
-
-        {!isMicReady && (
-          <span className="text-xs text-yellow-400">
-            🎤 Waiting for microphone permission
-          </span>
-        )}
-
-        {/* 🎤 LOCAL AUDIO */}
-        {localStream && (
-          <audio
-            autoPlay
-            muted
-            playsInline
-            ref={(el) => el && (el.srcObject = localStream)}
-          />
-        )}
-
-        {/* 🔊 REMOTE AUDIO */}
-        <audio ref={remoteAudioRef} autoPlay playsInline />
-
-        {/* 🎛️ CONTROLS */}
-        <div className="flex gap-6 mt-4">
-          <button
-            onClick={toggleMute}
-            disabled={!isMicReady}
-            className="w-14 h-14 rounded-full bg-slate-700"
-          >
-            {isMuted ? "🔈" : "🔇"}
-          </button>
-
-          <button
-            onClick={handleEnd}
-            className="w-14 h-14 rounded-full bg-red-600"
-          >
-            📞
-          </button>
-        </div>
-
-        <p className="text-xs opacity-40">
-          Call ends automatically
-        </p>
+      {/* STATUS */}
+      <div className="flex items-center justify-between text-xs opacity-80">
+        <span className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          Connected • Anonymous
+        </span>
+        <span>⏱ {formatTime(timeLeft)}</span>
       </div>
+
+      {/* VOICE PULSE */}
+      <div className="mt-5 flex justify-center gap-2">
+        {[1, 2, 3, 4].map((i) => (
+          <span
+            key={i}
+            className="w-3 h-3 rounded-full bg-indigo-400 animate-voice"
+            style={{ animationDelay: `${i * 0.15}s` }}
+          />
+        ))}
+      </div>
+
+      {/* MICRO COPY */}
+      <p className="mt-4 text-center text-xs opacity-70">
+        You’re anonymous. Say hi 👋
+      </p>
+
+      {/* CONTROLS */}
+      <div className="mt-4 flex justify-center gap-4">
+        <button
+          onClick={toggleMute}
+          className={`px-5 py-2 rounded-xl text-sm transition ${isMuted
+            ? "bg-yellow-500 text-black"
+            : "bg-white/10 hover:bg-white/20"
+            }`}
+        >
+          {isMuted ? "Unmute" : "Mute"}
+        </button>
+
+        <button
+          onClick={() => {
+            if (endedRef.current) return;
+            endedRef.current = true;
+            onEnd?.();
+          }}
+          className="px-6 py-2 rounded-xl text-sm bg-red-500 hover:bg-red-600"
+        >
+          End Call
+        </button>
+      </div>
+
+      {/* ANIMATION */}
+      <style>
+        {`
+          @keyframes voice {
+            0% { transform: scale(0.6); opacity: 0.4; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.6); opacity: 0.4; }
+          }
+          .animate-voice {
+            animation: voice 1.4s infinite ease-in-out;
+          }
+        `}
+      </style>
     </div>
   );
 };

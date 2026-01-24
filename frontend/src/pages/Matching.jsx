@@ -1,51 +1,32 @@
 import React, { useEffect, useRef, useState } from "react";
 
 const Matching = ({ socket, onMatched }) => {
-  const hasRequestedMatch = useRef(false);
-  const retryTimeoutRef = useRef(null);
   const matchedRef = useRef(false);
+  const retryTimeoutRef = useRef(null);
   const [dots, setDots] = useState("");
 
-  /* 🔁 UI animation */
+  /* 🔁 animated dots */
   useEffect(() => {
     const interval = setInterval(() => {
       setDots((prev) => (prev.length === 3 ? "" : prev + "."));
     }, 500);
-
     return () => clearInterval(interval);
   }, []);
 
-  /* 🔌 MATCHING LOGIC (BULLETPROOF) */
+  /* 🔌 LISTEN ONLY */
   useEffect(() => {
     if (!socket) return;
 
-    // ✅ emit find_match ONLY ONCE
-    if (!hasRequestedMatch.current) {
-      hasRequestedMatch.current = true;
-      matchedRef.current = false;
-      socket.emit("find_match");
-      console.log("📤 find_match emitted");
-    }
-
     const handleMatchFound = (data) => {
-      // 🛡️ HARD GUARD (server mismatch / stale events)
-      if (
-        !data ||
-        typeof data !== "object" ||
-        !data.matchId ||
-        !data.role
-      ) {
-        console.warn("⚠️ match_found invalid payload", data);
+      if (!data?.matchId || !data?.role) {
+        console.warn("⚠️ invalid match_found payload", data);
         return;
       }
-
-      // ❌ ignore duplicate / late events
       if (matchedRef.current) return;
       matchedRef.current = true;
 
       console.log("🎯 MATCH FOUND:", data.matchId, data.role);
 
-      // stop retry timer
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
@@ -53,19 +34,13 @@ const Matching = ({ socket, onMatched }) => {
 
       onMatched({
         matchId: data.matchId,
-        isCaller: data.role === "caller",
+        role: data.role,
       });
     };
 
     const handleTimeout = () => {
       if (matchedRef.current) return;
-
-      console.log("⏱️ match_timeout → retry");
-
-      retryTimeoutRef.current = setTimeout(() => {
-        hasRequestedMatch.current = false;
-        socket.emit("find_match");
-      }, 1000);
+      console.log("⏱️ still searching...");
     };
 
     socket.on("match_found", handleMatchFound);
@@ -83,69 +58,60 @@ const Matching = ({ socket, onMatched }) => {
   }, [socket, onMatched]);
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top, #1e293b 0%, #020617 65%)",
-        color: "white",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "20px",
-      }}
-    >
+    <div className="min-h-screen flex items-center justify-center
+                    bg-gradient-to-br from-slate-950 to-black text-white px-4">
       <div
-        style={{
-          width: "100%",
-          maxWidth: "360px",
-          padding: "32px 24px",
-          borderRadius: "24px",
-          background: "rgba(255,255,255,0.05)",
-          backdropFilter: "blur(16px)",
-          textAlign: "center",
-          boxShadow: "0 20px 40px rgba(0,0,0,0.45)",
-        }}
+        className="w-full max-w-sm px-6 py-8 rounded-3xl
+                   bg-white/5 backdrop-blur-xl
+                   shadow-[0_30px_80px_rgba(0,0,0,0.6)]
+                   text-center animate-fadeIn"
       >
-        <h2 style={{ fontSize: "20px", fontWeight: "600" }}>
-          Finding opponent{dots}
-        </h2>
-
-        <p style={{ marginTop: "10px", fontSize: "14px", opacity: 0.7 }}>
-          Looking for a random opponent
-        </p>
-
-        <div
-          style={{
-            marginTop: "28px",
-            width: "100%",
-            height: "6px",
-            borderRadius: "6px",
-            background: "rgba(255,255,255,0.1)",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: "40%",
-              height: "100%",
-              background:
-                "linear-gradient(90deg, #2563eb, #4f46e5)",
-              animation: "loading 1.2s infinite ease-in-out",
-            }}
-          />
+        {/* Pulse indicator */}
+        <div className="flex justify-center mb-4">
+          <span className="w-3 h-3 rounded-full bg-indigo-500 animate-pulse" />
         </div>
 
-        <p style={{ marginTop: "22px", fontSize: "12px", opacity: 0.4 }}>
+        <h2 className="text-lg font-semibold">
+          Finding someone{dots}
+        </h2>
+
+        <p className="mt-2 text-sm opacity-70">
+          Looking for a random anonymous user
+        </p>
+
+        {/* Progress bar */}
+        <div className="mt-6 w-full h-2 rounded-full bg-white/10 overflow-hidden">
+          <div className="h-full w-1/3 bg-gradient-to-r from-indigo-500 to-sky-500 animate-loading" />
+        </div>
+
+        <p className="mt-5 text-xs opacity-50">
           This usually takes a few seconds
         </p>
       </div>
 
+      {/* Animations */}
       <style>
         {`
           @keyframes loading {
             0% { transform: translateX(-100%); }
             100% { transform: translateX(300%); }
+          }
+          .animate-loading {
+            animation: loading 1.4s infinite ease-in-out;
+          }
+
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+              transform: scale(0.95);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1);
+            }
+          }
+          .animate-fadeIn {
+            animation: fadeIn 0.4s ease-out;
           }
         `}
       </style>

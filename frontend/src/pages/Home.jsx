@@ -20,7 +20,9 @@ const Home = () => {
 
   const socketRef = useRef(null);
 
-  /* 🔌 SOCKET INIT */
+  /* =======================
+     SOCKET INIT (ONCE)
+  ======================= */
   useEffect(() => {
     const s = io(import.meta.env.VITE_SOCKET_URL, {
       transports: ["polling", "websocket"],
@@ -30,38 +32,58 @@ const Home = () => {
     socketRef.current = s;
     setSocket(s);
 
-    return () => s.disconnect();
+    return () => {
+      s.disconnect();
+      socketRef.current = null;
+    };
   }, []);
 
+  /* =======================
+     START MATCHING
+  ======================= */
   const startMatching = () => {
+    if (!socketRef.current) return;
+
     setMatchId(null);
+    setIsCaller(false);
     setAudioOn(false);
     setStage("matching");
+
+    socketRef.current.emit("find_match");
   };
 
-  /* 🎯 MATCH FOUND (CRITICAL FIX) */
-  const handleMatched = ({ matchId, isCaller }) => {
-    console.log("🏠 HOME → MATCHED:", matchId, isCaller);
-
+  /* =======================
+     MATCH FOUND
+  ======================= */
+  const handleMatched = ({ matchId, role }) => {
     setMatchId(matchId);
-    setIsCaller(isCaller);
+    setIsCaller(role === "caller");
 
-    // 🔥 audio lifecycle controlled HERE
     if (mode === "audio") {
       setAudioOn(true);
     }
 
-    setStage("chat"); // chat UI + audio overlay
+    setStage("chat");
   };
 
-  /* ❌ END CHAT / CALL */
+
+  /* =======================
+     END CHAT / MATCH
+  ======================= */
   const handleEnd = () => {
+    if (socketRef.current) {
+      socketRef.current.emit("skip"); // 🔥 server clean match
+    }
+
     setAudioOn(false);
     setMatchId(null);
+    setIsCaller(false);
     setStage("matching");
   };
 
-  /* 🔁 MATCHING SCREEN */
+  /* =======================
+     MATCHING SCREEN
+  ======================= */
   if (stage === "matching" && socket) {
     return (
       <Matching
@@ -71,7 +93,9 @@ const Home = () => {
     );
   }
 
-  /* 💬 CHAT / AUDIO SCREEN */
+  /* =======================
+     CHAT / AUDIO SCREEN
+  ======================= */
   if (stage === "chat" && socket && matchId) {
     return (
       <Chat
@@ -86,7 +110,9 @@ const Home = () => {
     );
   }
 
-  /* 🏠 LANDING PAGE */
+  /* =======================
+     LANDING PAGE
+  ======================= */
   return (
     <>
       {/* LOGO */}

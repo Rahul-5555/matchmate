@@ -5,7 +5,9 @@ const cors = require("cors");
 
 const app = express();
 
-/* ✅ HTTP CORS */
+/* =======================
+   HTTP CORS
+======================= */
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -26,7 +28,9 @@ app.use(
 
 const server = http.createServer(app);
 
-/* ✅ SOCKET.IO */
+/* =======================
+   SOCKET.IO
+======================= */
 const io = new Server(server, {
   cors: {
     origin: [
@@ -38,29 +42,36 @@ const io = new Server(server, {
   transports: ["polling", "websocket"],
 });
 
-/* 🔥 STATE */
+/* =======================
+   STATE
+======================= */
 const onlineUsers = new Set();
 let waitingQueue = [];
-const userPairs = {};
-const userRooms = {};
-const matchTimers = {};
-const matchTimeouts = {}; // 🔥 IMPORTANT
 
-/* 🧹 END MATCH */
+const userPairs = {};     // socketId -> partnerId
+const userRooms = {};     // socketId -> matchId
+const matchTimers = {};   // matchId -> timeout
+const matchTimeouts = {}; // socketId -> timeout
+
+/* =======================
+   END MATCH (CHAT LEVEL)
+======================= */
 function endMatch(socketId, reason = "ended") {
   const matchId = userRooms[socketId];
   if (!matchId) return;
 
   const partnerId = userPairs[socketId];
 
-  // ⏱️ clear auto end timer
+  // ⏱️ clear match timer
   if (matchTimers[matchId]) {
     clearTimeout(matchTimers[matchId]);
     delete matchTimers[matchId];
   }
 
+  // 🔔 CHAT / MATCH END (NOT AUDIO)
   io.to(matchId).emit("call-ended", { reason });
 
+  // 🚪 leave rooms safely
   setTimeout(() => {
     io.sockets.sockets.get(socketId)?.leave(matchId);
     io.sockets.sockets.get(partnerId)?.leave(matchId);
@@ -72,7 +83,9 @@ function endMatch(socketId, reason = "ended") {
   delete userRooms[partnerId];
 }
 
-/* 🔁 MATCH USERS */
+/* =======================
+   MATCH USERS
+======================= */
 function tryMatch() {
   waitingQueue = waitingQueue.filter(
     (id) => io.sockets.sockets.has(id) && !userRooms[id]
@@ -98,32 +111,26 @@ function tryMatch() {
   io.to(caller).emit("match_found", { matchId, role: "caller" });
   io.to(callee).emit("match_found", { matchId, role: "callee" });
 
-  // 🔥 SYNCED CALL START
-  const startTime = Date.now();
-  io.to(matchId).emit("call-started", { startTime });
-
-  // ⏱️ AUTO END AFTER 10 MIN
+  // ⏱️ AUTO END MATCH (10 min)
   matchTimers[matchId] = setTimeout(() => {
     endMatch(caller, "timeout");
   }, 10 * 60 * 1000);
 }
 
-
-/* 🔌 SOCKET */
+/* =======================
+   SOCKET CONNECTION
+======================= */
 io.on("connection", (socket) => {
   console.log("🟢 CONNECT:", socket.id);
 
   onlineUsers.add(socket.id);
   io.emit("online_count", onlineUsers.size);
 
+  /* ---------- FIND MATCH ---------- */
   socket.on("find_match", () => {
-    if (
-      !waitingQueue.includes(socket.id) &&
-      !userRooms[socket.id]
-    ) {
+    if (!waitingQueue.includes(socket.id) && !userRooms[socket.id]) {
       waitingQueue.push(socket.id);
 
-      // ⏱️ SAFE timeout
       matchTimeouts[socket.id] = setTimeout(() => {
         if (!userRooms[socket.id]) {
           socket.emit("match_timeout");
@@ -138,6 +145,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  /* ---------- SKIP ---------- */
   socket.on("skip", () => {
     endMatch(socket.id, "skipped");
 
@@ -149,15 +157,25 @@ io.on("connection", (socket) => {
     tryMatch();
   });
 
-  /* 💬 CHAT */
-  socket.on("send_message", (text) => {
+  /* ---------- CHAT ---------- */
+  socket.on("send_message", ({ text }) => {
     const partnerId = userPairs[socket.id];
     if (partnerId) {
       io.to(partnerId).emit("receive_message", { text });
     }
   });
 
-  /* 🎧 WEBRTC SIGNALING */
+  socket.on("typing", () => {
+    const partnerId = userPairs[socket.id];
+    if (partnerId) io.to(partnerId).emit("partner_typing");
+  });
+
+  socket.on("stop_typing", () => {
+    const partnerId = userPairs[socket.id];
+    if (partnerId) io.to(partnerId).emit("partner_stop_typing");
+  });
+
+  /* ---------- WEBRTC SIGNALING ---------- */
   socket.on("offer", ({ matchId, offer }) => {
     if (userRooms[socket.id] === matchId) {
       socket.to(matchId).emit("offer", { offer });
@@ -176,7 +194,13 @@ io.on("connection", (socket) => {
     }
   });
 
-  /* 🔇 MUTE */
+  /* ---------- 🔊 AUDIO ONLY ---------- */
+  socket.on("audio:end", ({ matchId }) => {
+    if (!matchId) return;
+    socket.to(matchId).emit("audio:ended");
+  });
+
+  /* ---------- 🔇 MUTE ---------- */
   socket.on("mute", () => {
     const partnerId = userPairs[socket.id];
     if (partnerId) io.to(partnerId).emit("partner_muted");
@@ -187,11 +211,12 @@ io.on("connection", (socket) => {
     if (partnerId) io.to(partnerId).emit("partner_unmuted");
   });
 
-  /* ❌ DISCONNECT */
+  /* ---------- DISCONNECT ---------- */
   socket.on("disconnect", () => {
     console.log("🔴 DISCONNECT:", socket.id);
 
     endMatch(socket.id, "disconnect");
+
     waitingQueue = waitingQueue.filter(
       (id) => id !== socket.id
     );
@@ -206,7 +231,9 @@ io.on("connection", (socket) => {
   });
 });
 
-/* 🚀 START */
+/* =======================
+   START SERVER
+======================= */
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log("🚀 Server running on port", PORT);

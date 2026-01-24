@@ -1,20 +1,17 @@
 import { useEffect, useRef } from "react";
 import AudioCall from "../components/AudioCall";
-import useWebRTC from "../hooks/useWebRTC";
 
 const ChatAudioController = ({
-  socket,
-  matchId,
   audioOn,
   setAudioOn,
   isCaller,
+  webrtc,        // 👈 injected from Chat.jsx
 }) => {
   const startedRef = useRef(false);
 
-  const webrtc = useWebRTC(socket, matchId);
   const { startCall, endCall } = webrtc;
 
-  /* ▶️ START CALL (CALLER ONLY) */
+  /* ▶️ AUTO START AUDIO (CALLER ONLY) */
   useEffect(() => {
     if (!audioOn) return;
     if (!isCaller) return;
@@ -24,13 +21,20 @@ const ChatAudioController = ({
     startCall();
   }, [audioOn, isCaller, startCall]);
 
+  /* 🧹 RESET WHEN AUDIO OFF */
+  useEffect(() => {
+    if (!audioOn) {
+      startedRef.current = false;
+    }
+  }, [audioOn]);
+
   if (!audioOn) return null;
 
   return (
     <AudioCall
-      {...webrtc}
+      webrtc={webrtc}
       onEnd={() => {
-        endCall(true);     // self end
+        endCall(true);   // 🔥 emits audio:end
         setAudioOn(false);
         startedRef.current = false;
       }}
