@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 const Matching = ({ socket, onMatched }) => {
   const hasRequestedMatch = useRef(false);
   const retryTimeoutRef = useRef(null);
-  const matchedRef = useRef(false); // 🔒 prevent duplicate match handling
+  const matchedRef = useRef(false);
   const [dots, setDots] = useState("");
 
   /* 🔁 UI animation */
@@ -15,19 +15,20 @@ const Matching = ({ socket, onMatched }) => {
     return () => clearInterval(interval);
   }, []);
 
-  /* 🔌 MATCHING LOGIC (HARD SAFE) */
+  /* 🔌 MATCHING LOGIC (BULLETPROOF) */
   useEffect(() => {
     if (!socket) return;
 
     // ✅ emit find_match ONLY ONCE
     if (!hasRequestedMatch.current) {
       hasRequestedMatch.current = true;
+      matchedRef.current = false;
       socket.emit("find_match");
       console.log("📤 find_match emitted");
     }
 
     const handleMatchFound = (data) => {
-      // 🛡️ bullet-proof payload guard
+      // 🛡️ HARD GUARD (server mismatch / stale events)
       if (
         !data ||
         typeof data !== "object" ||
@@ -38,13 +39,13 @@ const Matching = ({ socket, onMatched }) => {
         return;
       }
 
-      // ❌ already matched → ignore stale event
+      // ❌ ignore duplicate / late events
       if (matchedRef.current) return;
       matchedRef.current = true;
 
       console.log("🎯 MATCH FOUND:", data.matchId, data.role);
 
-      // stop retry if running
+      // stop retry timer
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
@@ -59,7 +60,7 @@ const Matching = ({ socket, onMatched }) => {
     const handleTimeout = () => {
       if (matchedRef.current) return;
 
-      console.log("⏱️ match_timeout → retry in 1s");
+      console.log("⏱️ match_timeout → retry");
 
       retryTimeoutRef.current = setTimeout(() => {
         hasRequestedMatch.current = false;
