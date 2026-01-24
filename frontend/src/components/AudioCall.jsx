@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import useVoiceActivity from "../hooks/useVoiceActivity";
 
 const CALL_DURATION = 10 * 60;
@@ -18,7 +18,20 @@ const AudioCall = ({
   const timerRef = useRef(null);
   const remoteAudioRef = useRef(null);
 
-  /* ⏱ TIMER */
+  /* 🔄 RESET WHEN STREAM CHANGES (NEW CALL) */
+  useEffect(() => {
+    endedRef.current = false;
+    setTimeLeft(CALL_DURATION);
+  }, [localStream]);
+
+  /* ❌ END CALL (SAFE) */
+  const handleEnd = useCallback(() => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    onEnd?.();
+  }, [onEnd]);
+
+  /* ⏱ TIMER (FIXED) */
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
@@ -30,15 +43,13 @@ const AudioCall = ({
       });
     }, 1000);
 
-    return () => clearInterval(timerRef.current);
-  },);
-
-  /*  END CALL */
-  const handleEnd = () => {
-    if (endedRef.current) return;
-    endedRef.current = true;
-    onEnd?.();
-  };
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [handleEnd]);
 
   /* 🔊 ATTACH REMOTE AUDIO */
   useEffect(() => {
@@ -79,8 +90,8 @@ const AudioCall = ({
         </div>
 
         {!isMicReady && (
-          <span className="text-xs text-white/60">
-            Connecting microphone…
+          <span className="text-xs text-yellow-400">
+            🎤 Waiting for microphone permission
           </span>
         )}
 
@@ -94,7 +105,7 @@ const AudioCall = ({
           />
         )}
 
-        {/* 🔊 REMOTE AUDIO  */}
+        {/* 🔊 REMOTE AUDIO */}
         {remoteStream && (
           <audio ref={remoteAudioRef} autoPlay playsInline />
         )}
@@ -103,7 +114,8 @@ const AudioCall = ({
           <button
             onClick={toggleMute}
             disabled={!isMicReady}
-            className="w-14 h-14 rounded-full bg-slate-700"
+            className={`w-14 h-14 rounded-full ${isMicReady ? "bg-slate-700" : "bg-slate-700/50"
+              }`}
           >
             {isMuted ? "🔈" : "🔇"}
           </button>

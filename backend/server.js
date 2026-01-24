@@ -44,30 +44,28 @@ let waitingQueue = [];
 const userPairs = {};
 const userRooms = {};
 const matchTimers = {};
+const matchTimeouts = {}; // 🔥 IMPORTANT
 
-/* 🧹 END MATCH (SINGLE SOURCE OF TRUTH) */
+/* 🧹 END MATCH */
 function endMatch(socketId, reason = "ended") {
-  if (!userRooms[socketId]) return;
+  const matchId = userRooms[socketId];
+  if (!matchId) return;
 
   const partnerId = userPairs[socketId];
-  const matchId = userRooms[socketId];
 
-  // clear timer
+  // ⏱️ clear auto end timer
   if (matchTimers[matchId]) {
     clearTimeout(matchTimers[matchId]);
     delete matchTimers[matchId];
   }
 
-  // notify both users
   io.to(matchId).emit("call-ended", { reason });
 
-  // delay room leave to avoid race condition
   setTimeout(() => {
     io.sockets.sockets.get(socketId)?.leave(matchId);
     io.sockets.sockets.get(partnerId)?.leave(matchId);
   }, 100);
 
-  // cleanup
   delete userPairs[socketId];
   delete userPairs[partnerId];
   delete userRooms[socketId];
@@ -76,37 +74,52 @@ function endMatch(socketId, reason = "ended") {
 
 /* 🔁 MATCH USERS */
 function tryMatch() {
-  waitingQueue = waitingQueue.filter((id) =>
-    io.sockets.sockets.has(id)
+  waitingQueue = waitingQueue.filter(
+    (id) => io.sockets.sockets.has(id) && !userRooms[id]
   );
 
   if (waitingQueue.length < 2) return;
 
-  const a = waitingQueue.shift();
-  const b = waitingQueue.shift();
-  if (!a || !b || a === b) return;
+  const caller = waitingQueue.shift();
+  const callee = waitingQueue.shift();
+  if (!caller || !callee || caller === callee) return;
 
   const matchId =
     "match_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
-  userPairs[a] = b;
-  userPairs[b] = a;
-  userRooms[a] = matchId;
-  userRooms[b] = matchId;
+  userPairs[caller] = callee;
+  userPairs[callee] = caller;
+  userRooms[caller] = matchId;
+  userRooms[callee] = matchId;
 
-  io.sockets.sockets.get(a)?.join(matchId);
-  io.sockets.sockets.get(b)?.join(matchId);
+  io.sockets.sockets.get(caller)?.join(matchId);
+  io.sockets.sockets.get(callee)?.join(matchId);
 
-  // 🔥 server decides roles
-  io.to(a).emit("match_found", { matchId, role: "caller" });
-  io.to(b).emit("match_found", { matchId, role: "callee" });
+  // 🔥 ALWAYS send role
+  io.to(caller).emit("match_found", {
+    matchId,
+    role: "caller",
+  });
 
-  // ⏱️ auto end after 10 minutes
-  const timer = setTimeout(() => {
-    endMatch(a, "timeout");
+  io.to(callee).emit("match_found", {
+    matchId,
+    role: "callee",
+  });
+
+  // ❌ cancel match_timeout
+  if (matchTimeouts[caller]) {
+    clearTimeout(matchTimeouts[caller]);
+    delete matchTimeouts[caller];
+  }
+  if (matchTimeouts[callee]) {
+    clearTimeout(matchTimeouts[callee]);
+    delete matchTimeouts[callee];
+  }
+
+  // ⏱️ auto end after 10 min
+  matchTimers[matchId] = setTimeout(() => {
+    endMatch(caller, "timeout");
   }, 10 * 60 * 1000);
-
-  matchTimers[matchId] = timer;
 }
 
 /* 🔌 SOCKET */
@@ -117,16 +130,35 @@ io.on("connection", (socket) => {
   io.emit("online_count", onlineUsers.size);
 
   socket.on("find_match", () => {
-    if (!waitingQueue.includes(socket.id)) {
+    if (
+      !waitingQueue.includes(socket.id) &&
+      !userRooms[socket.id]
+    ) {
       waitingQueue.push(socket.id);
+
+      // ⏱️ SAFE timeout
+      matchTimeouts[socket.id] = setTimeout(() => {
+        if (!userRooms[socket.id]) {
+          socket.emit("match_timeout");
+          waitingQueue = waitingQueue.filter(
+            (id) => id !== socket.id
+          );
+        }
+        delete matchTimeouts[socket.id];
+      }, 8000);
+
       tryMatch();
     }
   });
 
   socket.on("skip", () => {
     endMatch(socket.id, "skipped");
-    waitingQueue = waitingQueue.filter((id) => id !== socket.id);
+
+    waitingQueue = waitingQueue.filter(
+      (id) => id !== socket.id
+    );
     waitingQueue.push(socket.id);
+
     tryMatch();
   });
 
@@ -138,7 +170,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  /* 🎧 WEBRTC SIGNALING (MATCH SAFE) */
+  /* 🎧 WEBRTC SIGNALING */
   socket.on("offer", ({ matchId, offer }) => {
     if (userRooms[socket.id] === matchId) {
       socket.to(matchId).emit("offer", { offer });
@@ -173,7 +205,14 @@ io.on("connection", (socket) => {
     console.log("🔴 DISCONNECT:", socket.id);
 
     endMatch(socket.id, "disconnect");
-    waitingQueue = waitingQueue.filter((id) => id !== socket.id);
+    waitingQueue = waitingQueue.filter(
+      (id) => id !== socket.id
+    );
+
+    if (matchTimeouts[socket.id]) {
+      clearTimeout(matchTimeouts[socket.id]);
+      delete matchTimeouts[socket.id];
+    }
 
     onlineUsers.delete(socket.id);
     io.emit("online_count", onlineUsers.size);
