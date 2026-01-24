@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 const Matching = ({ socket, onMatched }) => {
   const hasRequestedMatch = useRef(false);
   const retryTimeoutRef = useRef(null);
+  const matchedRef = useRef(false); // 🔒 prevent duplicate match handling
   const [dots, setDots] = useState("");
 
   /* 🔁 UI animation */
@@ -14,7 +15,7 @@ const Matching = ({ socket, onMatched }) => {
     return () => clearInterval(interval);
   }, []);
 
-  /* 🔌 MATCHING LOGIC (STRICTMODE + SAFE) */
+  /* 🔌 MATCHING LOGIC (HARD SAFE) */
   useEffect(() => {
     if (!socket) return;
 
@@ -25,30 +26,41 @@ const Matching = ({ socket, onMatched }) => {
       console.log("📤 find_match emitted");
     }
 
-    const handleMatchFound = ({ matchId, role }) => {
-      if (!matchId || !role) {
-        console.warn("⚠️ match_found invalid payload");
+    const handleMatchFound = (data) => {
+      // 🛡️ bullet-proof payload guard
+      if (
+        !data ||
+        typeof data !== "object" ||
+        !data.matchId ||
+        !data.role
+      ) {
+        console.warn("⚠️ match_found invalid payload", data);
         return;
       }
 
-      console.log("🎯 MATCH FOUND:", matchId, role);
+      // ❌ already matched → ignore stale event
+      if (matchedRef.current) return;
+      matchedRef.current = true;
 
-      // stop any pending retry
+      console.log("🎯 MATCH FOUND:", data.matchId, data.role);
+
+      // stop retry if running
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
       }
 
       onMatched({
-        matchId,
-        isCaller: role === "caller",
+        matchId: data.matchId,
+        isCaller: data.role === "caller",
       });
     };
 
     const handleTimeout = () => {
+      if (matchedRef.current) return;
+
       console.log("⏱️ match_timeout → retry in 1s");
 
-      // allow retry but not immediately (avoid spam)
       retryTimeoutRef.current = setTimeout(() => {
         hasRequestedMatch.current = false;
         socket.emit("find_match");
@@ -66,7 +78,6 @@ const Matching = ({ socket, onMatched }) => {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
       }
-      // ❌ DO NOT reset hasRequestedMatch here
     };
   }, [socket, onMatched]);
 
