@@ -157,13 +157,41 @@ io.on("connection", (socket) => {
     tryMatch();
   });
 
-  /* ---------- CHAT ---------- */
-  socket.on("send_message", ({ text }) => {
+  /* ---------- CHAT (UPDATED) ---------- */
+
+  // SEND MESSAGE
+  socket.on("send_message", (msg) => {
     const partnerId = userPairs[socket.id];
-    if (partnerId) {
-      io.to(partnerId).emit("receive_message", { text });
-    }
+    if (!partnerId) return;
+
+    // send message to partner
+    io.to(partnerId).emit("receive_message", msg);
+
+    // sender already has "sent"
   });
+
+  // MESSAGE DELIVERED
+  socket.on("message_delivered", ({ messageId }) => {
+    const partnerId = userPairs[socket.id];
+    if (!partnerId) return;
+
+    io.to(partnerId).emit("message_status", {
+      messageId,
+      status: "delivered",
+    });
+  });
+
+  // MESSAGE SEEN
+  socket.on("message_seen", ({ messageId }) => {
+    const partnerId = userPairs[socket.id];
+    if (!partnerId) return;
+
+    io.to(partnerId).emit("message_status", {
+      messageId,
+      status: "seen",
+    });
+  });
+
 
   socket.on("typing", () => {
     const partnerId = userPairs[socket.id];

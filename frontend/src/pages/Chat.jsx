@@ -14,7 +14,6 @@ const Chat = ({
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [partnerMuted, setPartnerMuted] = useState(false);
 
   const [showToast, setShowToast] = useState(false);
   const [toastText, setToastText] = useState("");
@@ -23,12 +22,7 @@ const Chat = ({
   const typingTimeout = useRef(null);
   const exitHandledRef = useRef(false);
 
-  /* 🔥 SINGLE WEBRTC INSTANCE */
-  const webrtc = useWebRTC({
-    socket,
-    matchId,
-    isCaller,
-  });
+  const webrtc = useWebRTC({ socket, matchId, isCaller });
 
   /* 🔁 RESET ON NEW MATCH */
   useEffect(() => {
@@ -36,60 +30,41 @@ const Chat = ({
     setMessages([]);
     setShowToast(false);
     setToastText("");
-    setPartnerMuted(false);
   }, [matchId]);
 
-  /* 🔽 AUTO SCROLL (CHAT MODE ONLY) */
+  /* 🔽 AUTO SCROLL */
   useEffect(() => {
-    if (!audioOn) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, isTyping, audioOn]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
 
-  /* 🔔 REMOTE AUDIO END → STOP AUDIO UI */
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleRemoteAudioEnd = () => {
-      setAudioOn(false);        // 🔥 stop timer + UI
-    };
-
-    socket.on("audio:ended", handleRemoteAudioEnd);
-
-    return () => {
-      socket.off("audio:ended", handleRemoteAudioEnd);
-    };
-  }, [socket, setAudioOn]);
-
-  /* 👀 TOAST + DELAY EXIT */
-  const triggerExitWithToast = (reason = "ended") => {
-    if (exitHandledRef.current) return;
-    exitHandledRef.current = true;
-
-    if (reason === "timeout") {
-      setToastText("⏱️ Chat timed out");
-    } else if (reason === "left") {
-      setToastText("👀 Partner left the chat");
-    } else {
-      setToastText("👀 Chat ended");
-    }
-
-    setShowToast(true);
-
-    setTimeout(() => {
-      cleanupAndExit();
-    }, 2000);
-  };
-
-  /* 🔌 CHAT SOCKET EVENTS ONLY */
+  /* 🔌 SOCKET EVENTS */
   useEffect(() => {
     if (!socket) return;
 
     const onReceive = (msg) => {
-      setMessages((p) => [...p, { from: "partner", text: msg.text }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          ...msg,
+          id: msg.id ?? crypto.randomUUID(),
+          from: "partner",
+          status: "delivered",
+        },
+      ]);
+
+      socket.emit("message_delivered", { messageId: msg.id });
+    };
+
+    const onStatusUpdate = ({ messageId, status }) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, status } : m
+        )
+      );
     };
 
     socket.on("receive_message", onReceive);
+    socket.on("message_status", onStatusUpdate);
     socket.on("partner_typing", () => setIsTyping(true));
     socket.on("partner_stop_typing", () => setIsTyping(false));
     socket.on("partner_left", () => triggerExitWithToast("left"));
@@ -97,65 +72,71 @@ const Chat = ({
 
     return () => {
       socket.off("receive_message", onReceive);
-      socket.off("partner_typing");
-      socket.off("partner_stop_typing");
-      socket.off("partner_left");
-      socket.off("match_timeout");
+      socket.off("message_status", onStatusUpdate);
     };
   }, [socket]);
 
-  /* ❌ FINAL CHAT EXIT */
-  const cleanupAndExit = () => {
-    setShowToast(false);
-    setMessages([]);
-    setPartnerMuted(false);
-
-    // 🔥 audio + webrtc cleanup
-    webrtc.endCall(false);
-    setAudioOn(false);
-
-    onEnd(); // navigation / stage change
-  };
-
-  /* 💬 SEND MESSAGE */
+  /* 💬 SEND */
   const sendMessage = () => {
     if (!text.trim()) return;
 
-    setMessages((p) => [...p, { from: "me", text }]);
-    socket.emit("send_message", { text });
+    const msg = {
+      id: crypto.randomUUID(),
+      text,
+      status: "sent",
+    };
+
+    setMessages((prev) => [...prev, { ...msg, from: "me" }]);
+    socket.emit("send_message", msg);
     socket.emit("stop_typing");
     setText("");
   };
 
+  /* ❌ EXIT */
+  const cleanupAndExit = () => {
+    setShowToast(false);
+    webrtc.endCall(false);
+    setAudioOn(false);
+    onEnd();
+  };
+
+  const triggerExitWithToast = (reason) => {
+    if (exitHandledRef.current) return;
+    exitHandledRef.current = true;
+
+    setToastText(
+      reason === "timeout"
+        ? "⏱️ Chat timed out"
+        : "👀 Partner left the chat"
+    );
+
+    setShowToast(true);
+    setTimeout(cleanupAndExit, 2000);
+  };
+
   return (
     <>
-      {/* 👀 TOAST */}
+      {/* 🔔 TOAST */}
       {showToast && (
-        <div className="fixed top-6 z-[10000] bg-black/80 text-white px-4 py-2 rounded-xl shadow-lg">
+        <div className="fixed top-6 z-[10000] bg-black/90 text-white px-5 py-2 rounded-xl shadow-lg">
           {toastText}
         </div>
       )}
 
-      <div className="h-screen flex flex-col bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
+      <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-950 transition-colors">
         {/* HEADER */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/10">
-          <div className="text-sm">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="text-sm text-slate-600 dark:text-slate-300">
             🟢 Connected
-            {audioOn && <span className="ml-1">• Audio Call</span>}
-            {partnerMuted && (
-              <div className="text-xs opacity-60">🔇 Partner muted</div>
-            )}
           </div>
-
           <button
             onClick={cleanupAndExit}
-            className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+            className="text-sm text-red-500 hover:text-red-600"
           >
             End
           </button>
         </div>
 
-        {/* 🔊 AUDIO MODE → ONLY AUDIO UI */}
         {audioOn ? (
           <ChatAudioController
             audioOn={audioOn}
@@ -165,50 +146,63 @@ const Chat = ({
           />
         ) : (
           <>
-            {/* 💬 CHAT */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
-              {messages.map((m, i) => (
+            {/* CHAT BODY */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              {messages.map((m) => (
                 <div
-                  key={i}
-                  className={`max-w-[75%] px-3 py-2 rounded-xl text-sm ${m.from === "me"
-                    ? "self-end bg-indigo-600 text-white"
-                    : "self-start bg-slate-200 dark:bg-white/10"
+                  key={m.id}
+                  className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${m.from === "me"
+                    ? "ml-auto bg-indigo-600 text-white rounded-br-sm"
+                    : "mr-auto bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-sm"
                     }`}
                 >
-                  {m.text}
+                  <div>{m.text}</div>
+
+                  {m.from === "me" && (
+                    <div className="text-[10px] text-right opacity-70 mt-1">
+                      {m.status === "sent" && "✔"}
+                      {m.status === "delivered" && "✔✔"}
+                      {m.status === "seen" && "👁"}
+                    </div>
+                  )}
                 </div>
               ))}
 
               {isTyping && (
-                <span className="text-xs opacity-60">Typing…</span>
+                <div className="text-xs italic text-slate-400">
+                  Partner is typing…
+                </div>
               )}
 
               <div ref={bottomRef} />
             </div>
 
-            {/* ⌨️ INPUT */}
-            <div className="flex items-center gap-3 p-3 border-t bg-white dark:bg-slate-900">
-              <input
-                value={text}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  socket.emit("typing");
-                  clearTimeout(typingTimeout.current);
-                  typingTimeout.current = setTimeout(
-                    () => socket.emit("stop_typing"),
-                    800
-                  );
-                }}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                className="flex-1 px-4 py-2 rounded-xl text-sm bg-slate-100 dark:bg-white/10 outline-none"
-              />
+            {/* INPUT */}
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <div className="flex gap-3 items-center">
+                <input
+                  value={text}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    socket.emit("typing");
+                    clearTimeout(typingTimeout.current);
+                    typingTimeout.current = setTimeout(
+                      () => socket.emit("stop_typing"),
+                      800
+                    );
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  placeholder="Type a message…"
+                  className="flex-1 px-4 py-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
 
-              <button
-                onClick={sendMessage}
-                className="px-5 py-2 rounded-xl text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                Send
-              </button>
+                <button
+                  onClick={sendMessage}
+                  className="px-5 py-2 rounded-full bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition"
+                >
+                  Send
+                </button>
+              </div>
             </div>
           </>
         )}
