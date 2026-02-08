@@ -10,15 +10,20 @@ import Header from "../components/Header";
 import ThemeToggle from "../components/ThemeToggle";
 
 const Home = () => {
+  /* =======================
+     APP FLOW STATE
+  ======================= */
   const [stage, setStage] = useState("home"); // home | matching | chat
-  const [socket, setSocket] = useState(null);
+  const [mode, setMode] = useState("chat");   // chat | audio
 
-  const [mode, setMode] = useState("chat"); // chat | audio
   const [matchId, setMatchId] = useState(null);
   const [isCaller, setIsCaller] = useState(false);
   const [audioOn, setAudioOn] = useState(false);
 
+  const [socket, setSocket] = useState(null);
+
   const socketRef = useRef(null);
+  const isMatchingRef = useRef(false); // 🔥 prevents double match
 
   /* =======================
      SOCKET INIT (ONCE)
@@ -41,14 +46,17 @@ const Home = () => {
   /* =======================
      START MATCHING
   ======================= */
-  const startMatching = () => {
-    if (!socketRef.current) return;
+  const startMatching = (selectedMode) => {
+    if (!socketRef.current || isMatchingRef.current) return;
 
+    isMatchingRef.current = true;
+
+    setMode(selectedMode);
     setMatchId(null);
     setIsCaller(false);
     setAudioOn(false);
-    setStage("matching");
 
+    setStage("matching");
     socketRef.current.emit("find_match");
   };
 
@@ -56,6 +64,8 @@ const Home = () => {
      MATCH FOUND
   ======================= */
   const handleMatched = ({ matchId, role }) => {
+    isMatchingRef.current = false;
+
     setMatchId(matchId);
     setIsCaller(role === "caller");
 
@@ -66,18 +76,19 @@ const Home = () => {
     setStage("chat");
   };
 
-
   /* =======================
-     END CHAT / MATCH
+     END CHAT / SKIP
   ======================= */
   const handleEnd = () => {
     if (socketRef.current) {
-      socketRef.current.emit("skip"); // 🔥 server clean match
+      socketRef.current.emit("skip");
     }
 
     setAudioOn(false);
     setMatchId(null);
     setIsCaller(false);
+
+    isMatchingRef.current = false;
     setStage("matching");
   };
 
@@ -127,51 +138,64 @@ const Home = () => {
         <ThemeToggle />
       </div>
 
-      <div className="
-        min-h-screen
-        flex flex-col items-center justify-center
-        pt-28 px-4
-        bg-gradient-to-br
-        from-white to-slate-100
-        dark:from-slate-950 dark:to-slate-900
-        text-slate-900 dark:text-white
-      ">
+      <div
+        className="
+          min-h-screen
+          flex flex-col items-center justify-center
+          pt-28 px-4
+          bg-gradient-to-br
+          from-white to-slate-100
+          dark:from-slate-950 dark:to-slate-900
+          text-slate-900 dark:text-white
+        "
+      >
         {/* HERO */}
-        <div className="
-          relative w-full max-w-5xl
-          h-[420px] sm:h-[480px] md:h-[520px]
-          rounded-[32px] overflow-hidden
-          shadow-[0_40px_80px_rgba(0,0,0,0.75)]
-        ">
+        <div
+          className="
+            relative w-full max-w-5xl
+            h-[420px] sm:h-[480px] md:h-[520px]
+            rounded-[32px] overflow-hidden
+            shadow-[0_40px_80px_rgba(0,0,0,0.75)]
+          "
+        >
           <img
             src={heroImg}
             alt="Anonymous people chatting"
             className="w-full h-full object-cover"
           />
 
-          <div className="
-            absolute inset-0
-            bg-gradient-to-r
-            from-white/90 via-white/60 to-white/20
-            dark:from-slate-950/95 dark:via-slate-950/70 dark:to-slate-950/30
-          " />
+          <div
+            className="
+              absolute inset-0
+              bg-gradient-to-r
+              from-white/90 via-white/60 to-white/20
+              dark:from-slate-950/95 dark:via-slate-950/70 dark:to-slate-950/30
+            "
+          />
 
           <div className="absolute top-10 left-6 right-6 sm:left-10 sm:max-w-md">
             <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
               Talk Freely.
               <br />
-              <span className="
-                bg-gradient-to-r
-                from-indigo-500 to-sky-500
-                dark:from-sky-400 dark:to-indigo-500
-                bg-clip-text text-transparent
-              ">
+              <span
+                className="
+                  bg-gradient-to-r
+                  from-indigo-500 to-sky-500
+                  dark:from-sky-400 dark:to-indigo-500
+                  bg-clip-text text-transparent
+                "
+              >
                 Stay Anonymous.
               </span>
             </h1>
 
             <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-white/85">
-              Meet random people worldwide. No login. No profile. Just honest conversations.
+              Talk to real people anonymously. No login. No profile. Leave anytime.
+            </p>
+
+            {/* TRUST SIGNAL */}
+            <p className="mt-2 text-xs text-slate-500 dark:text-white/60">
+              🔒 Private • No profiles • Instant disconnect
             </p>
 
             <div className="mt-4">
@@ -185,23 +209,25 @@ const Home = () => {
         {/* CTA */}
         <div className="flex flex-col items-center text-center gap-3">
           <button
-            onClick={() => {
-              setMode("chat");
-              startMatching();
-            }}
-            className="px-9 py-3 rounded-xl text-sm font-medium text-white bg-slate-800 hover:bg-slate-700"
+            onClick={() => startMatching("chat")}
+            className="
+              px-9 py-3 rounded-xl text-sm font-medium
+              text-white bg-slate-800
+              hover:bg-slate-700 transition
+            "
           >
-            💬 Start Random Chat
+            💬 Text Chat (Instant)
           </button>
 
           <button
-            onClick={() => {
-              setMode("audio");
-              startMatching();
-            }}
-            className="px-9 py-3 rounded-xl text-sm font-medium text-white bg-slate-800 hover:bg-slate-700"
+            onClick={() => startMatching("audio")}
+            className="
+              px-9 py-3 rounded-xl text-sm font-medium
+              text-white bg-slate-800
+              hover:bg-slate-700 transition
+            "
           >
-            🎧 Start Audio Call
+            🎧 Voice Call (More real)
           </button>
 
           <Header />
