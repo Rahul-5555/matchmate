@@ -1,14 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 const MatchFound = ({ onContinue }) => {
   const [countdown, setCountdown] = useState(3);
+  const continuedRef = useRef(false); // 🔥 prevent double continue
 
-  /* ⏱ Auto continue after 3 sec */
+  /* ⏱ AUTO CONTINUE (SAFE) */
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((c) => {
         if (c <= 1) {
-          onContinue();
+          if (!continuedRef.current) {
+            continuedRef.current = true;
+            onContinue();
+          }
           return 0;
         }
         return c - 1;
@@ -18,16 +22,30 @@ const MatchFound = ({ onContinue }) => {
     return () => clearInterval(timer);
   }, [onContinue]);
 
+  /* ▶️ MANUAL CONTINUE */
+  const handleContinue = () => {
+    if (continuedRef.current) return;
+    continuedRef.current = true;
+    onContinue();
+  };
+
   return (
     <div
-      className="min-h-screen flex items-center justify-center
-                 bg-gradient-to-br from-slate-950 to-black text-white"
+      className="
+        min-h-screen flex items-center justify-center
+        bg-gradient-to-br from-slate-950 to-black
+        text-white px-4
+      "
     >
       <div
-        className="text-center px-6 py-10 rounded-3xl
-                   bg-white/5 backdrop-blur-xl
-                   shadow-[0_30px_80px_rgba(0,0,0,0.6)]
-                   animate-scaleIn"
+        className="
+          w-full max-w-sm
+          text-center px-6 py-10
+          rounded-3xl
+          bg-white/5 backdrop-blur-xl
+          shadow-[0_30px_80px_rgba(0,0,0,0.6)]
+          animate-scaleIn
+        "
       >
         {/* STATUS DOT */}
         <div className="flex justify-center mb-4">
@@ -38,18 +56,27 @@ const MatchFound = ({ onContinue }) => {
           🎉 Match Found
         </h1>
 
-        <p className="text-sm opacity-70 mb-6">
+        <p className="text-sm opacity-70 mb-4">
           You’re now connected to someone anonymous
+        </p>
+
+        {/* TRUST MICRO-COPY */}
+        <p className="text-xs opacity-50 mb-5">
+          No profile • No pressure • Leave anytime
         </p>
 
         {/* COUNTDOWN */}
         <p className="text-xs opacity-60 mb-4">
-          Starting in <span className="font-semibold">{countdown}</span>…
+          Starting in{" "}
+          <span className="font-semibold tabular-nums">
+            {countdown}
+          </span>
+          …
         </p>
 
         {/* CTA */}
         <button
-          onClick={onContinue}
+          onClick={handleContinue}
           className="
             px-8 py-3 rounded-xl text-sm font-semibold
             bg-gradient-to-r from-emerald-500 to-green-600
