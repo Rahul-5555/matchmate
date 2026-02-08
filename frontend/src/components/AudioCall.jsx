@@ -1,53 +1,63 @@
 import { useEffect, useRef, useState } from "react";
 
-const CALL_DURATION = 10 * 60;
+const CALL_DURATION = 10 * 60; // 10 minutes
 
 const AudioCall = ({ webrtc, onEnd }) => {
   const { localStream, remoteStream, isMuted, toggleMute } = webrtc;
 
   const [timeLeft, setTimeLeft] = useState(CALL_DURATION);
+
   const endedRef = useRef(false);
-  const shouldEndRef = useRef(false);
+  const timerRef = useRef(null);
 
   const localAudioRef = useRef(null);
   const remoteAudioRef = useRef(null);
 
-  /* 🔊 Attach audio streams */
+  /* =======================
+     ATTACH AUDIO STREAMS
+  ======================= */
   useEffect(() => {
     if (localStream && localAudioRef.current) {
       localAudioRef.current.srcObject = localStream;
-      localAudioRef.current.muted = true;
+      localAudioRef.current.muted = true; // 🔥 prevent echo
+      localAudioRef.current.play?.().catch(() => { });
     }
   }, [localStream]);
 
   useEffect(() => {
     if (remoteStream && remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play?.().catch(() => { });
     }
   }, [remoteStream]);
 
-  /* ⏱ Timer (safe) */
+  /* =======================
+     SAFE TIMER
+  ======================= */
   useEffect(() => {
-    const interval = setInterval(() => {
+    timerRef.current = setInterval(() => {
       setTimeLeft((t) => {
         if (t <= 1) {
-          shouldEndRef.current = true;
+          handleEnd();
           return 0;
         }
         return t - 1;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => clearInterval(timerRef.current);
   }, []);
 
-  /* 🛑 End after render */
-  useEffect(() => {
-    if (shouldEndRef.current && !endedRef.current) {
-      endedRef.current = true;
-      onEnd?.();
-    }
-  });
+  /* =======================
+     SAFE END (SINGLE FIRE)
+  ======================= */
+  const handleEnd = () => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+
+    clearInterval(timerRef.current);
+    onEnd?.();
+  };
 
   const formatTime = (t) => {
     const m = Math.floor(t / 60);
@@ -56,10 +66,20 @@ const AudioCall = ({ webrtc, onEnd }) => {
   };
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[92%] max-w-sm bg-black/80 backdrop-blur-xl text-white rounded-3xl px-5 py-4 shadow-2xl z-[9999]">
-      {/* AUDIO */}
-      <audio ref={localAudioRef} autoPlay />
-      <audio ref={remoteAudioRef} autoPlay />
+    <div
+      className="
+        fixed bottom-4 left-1/2 -translate-x-1/2
+        w-[92%] max-w-sm
+        bg-black/80 backdrop-blur-xl
+        text-white
+        rounded-3xl px-5 py-4
+        shadow-2xl z-[9999]
+        animate-slideUp
+      "
+    >
+      {/* AUDIO ELEMENTS */}
+      <audio ref={localAudioRef} autoPlay playsInline />
+      <audio ref={remoteAudioRef} autoPlay playsInline />
 
       {/* STATUS */}
       <div className="flex items-center justify-between text-xs opacity-80">
@@ -67,10 +87,12 @@ const AudioCall = ({ webrtc, onEnd }) => {
           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
           Connected • Anonymous
         </span>
-        <span>⏱ {formatTime(timeLeft)}</span>
+        <span className="tabular-nums">
+          ⏱ {formatTime(timeLeft)}
+        </span>
       </div>
 
-      {/* VOICE PULSE */}
+      {/* VOICE VISUAL */}
       <div className="mt-5 flex justify-center gap-2">
         {[1, 2, 3, 4].map((i) => (
           <span
@@ -90,27 +112,28 @@ const AudioCall = ({ webrtc, onEnd }) => {
       <div className="mt-4 flex justify-center gap-4">
         <button
           onClick={toggleMute}
-          className={`px-5 py-2 rounded-xl text-sm transition ${isMuted
-            ? "bg-yellow-500 text-black"
-            : "bg-white/10 hover:bg-white/20"
-            }`}
+          className={`
+            px-5 py-2 rounded-xl text-sm transition
+            ${isMuted
+              ? "bg-yellow-500 text-black"
+              : "bg-white/10 hover:bg-white/20"}
+          `}
         >
           {isMuted ? "Unmute" : "Mute"}
         </button>
 
         <button
-          onClick={() => {
-            if (endedRef.current) return;
-            endedRef.current = true;
-            onEnd?.();
-          }}
-          className="px-6 py-2 rounded-xl text-sm bg-red-500 hover:bg-red-600"
+          onClick={handleEnd}
+          className="
+            px-6 py-2 rounded-xl text-sm
+            bg-red-500 hover:bg-red-600
+          "
         >
           End Call
         </button>
       </div>
 
-      {/* ANIMATION */}
+      {/* ANIMATIONS */}
       <style>
         {`
           @keyframes voice {
@@ -120,6 +143,14 @@ const AudioCall = ({ webrtc, onEnd }) => {
           }
           .animate-voice {
             animation: voice 1.4s infinite ease-in-out;
+          }
+
+          @keyframes slideUp {
+            from { transform: translate(-50%, 40px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+          }
+          .animate-slideUp {
+            animation: slideUp 0.35s ease-out;
           }
         `}
       </style>
