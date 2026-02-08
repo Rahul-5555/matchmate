@@ -2,10 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 
 const Matching = ({ socket, onMatched }) => {
   const matchedRef = useRef(false);
-  const retryTimeoutRef = useRef(null);
-  const [dots, setDots] = useState("");
+  const timeoutRef = useRef(null);
 
-  /* 🔁 animated dots */
+  const [dots, setDots] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+
+  /* 🔁 Animated dots */
   useEffect(() => {
     const interval = setInterval(() => {
       setDots((prev) => (prev.length === 3 ? "" : prev + "."));
@@ -13,23 +15,27 @@ const Matching = ({ socket, onMatched }) => {
     return () => clearInterval(interval);
   }, []);
 
-  /* 🔌 LISTEN ONLY */
+  /* ⏱️ Elapsed time counter (psychological trust) */
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsed((e) => e + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  /* 🔌 Socket listeners */
   useEffect(() => {
     if (!socket) return;
 
     const handleMatchFound = (data) => {
-      if (!data?.matchId || !data?.role) {
-        console.warn("⚠️ invalid match_found payload", data);
-        return;
-      }
+      if (!data?.matchId || !data?.role) return;
       if (matchedRef.current) return;
+
       matchedRef.current = true;
 
-      console.log("🎯 MATCH FOUND:", data.matchId, data.role);
-
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
 
       onMatched({
@@ -40,7 +46,7 @@ const Matching = ({ socket, onMatched }) => {
 
     const handleTimeout = () => {
       if (matchedRef.current) return;
-      console.log("⏱️ still searching...");
+      console.log("⏳ Still searching...");
     };
 
     socket.on("match_found", handleMatchFound);
@@ -50,23 +56,29 @@ const Matching = ({ socket, onMatched }) => {
       socket.off("match_found", handleMatchFound);
       socket.off("match_timeout", handleTimeout);
 
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     };
   }, [socket, onMatched]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center
-                    bg-gradient-to-br from-slate-950 to-black text-white px-4">
+    <div className="
+      min-h-screen flex items-center justify-center
+      bg-gradient-to-br from-slate-950 to-black
+      text-white px-4
+    ">
       <div
-        className="w-full max-w-sm px-6 py-8 rounded-3xl
-                   bg-white/5 backdrop-blur-xl
-                   shadow-[0_30px_80px_rgba(0,0,0,0.6)]
-                   text-center animate-fadeIn"
+        className="
+          w-full max-w-sm px-6 py-8
+          rounded-3xl
+          bg-white/5 backdrop-blur-xl
+          shadow-[0_30px_80px_rgba(0,0,0,0.6)]
+          text-center animate-fadeIn
+        "
       >
-        {/* Pulse indicator */}
+        {/* Pulse */}
         <div className="flex justify-center mb-4">
           <span className="w-3 h-3 rounded-full bg-indigo-500 animate-pulse" />
         </div>
@@ -76,7 +88,7 @@ const Matching = ({ socket, onMatched }) => {
         </h2>
 
         <p className="mt-2 text-sm opacity-70">
-          Looking for a random anonymous user
+          Anonymous • No profile • Leave anytime
         </p>
 
         {/* Progress bar */}
@@ -84,8 +96,13 @@ const Matching = ({ socket, onMatched }) => {
           <div className="h-full w-1/3 bg-gradient-to-r from-indigo-500 to-sky-500 animate-loading" />
         </div>
 
-        <p className="mt-5 text-xs opacity-50">
-          This usually takes a few seconds
+        <p className="mt-4 text-xs opacity-60">
+          ⏱️ {elapsed}s elapsed — usually under 10 seconds
+        </p>
+
+        {/* Safety reassurance */}
+        <p className="mt-2 text-[11px] opacity-40">
+          Please be respectful. You can disconnect anytime.
         </p>
       </div>
 
