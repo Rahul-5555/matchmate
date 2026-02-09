@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 const DEFAULTS = {
-  silenceTime: 800,
-  smoothing: 0.95,
-  sensitivity: 2.2,
+  silenceTime: 800,   // ms
+  smoothing: 0.95,    // noise floor smoothing
+  sensitivity: 2.2,  // speech threshold multiplier
   fftSize: 1024,
 };
 
@@ -21,21 +21,28 @@ const useVoiceActivity = (stream, options = {}) => {
   const analyserRef = useRef(null);
   const rafRef = useRef(null);
   const silenceTimerRef = useRef(null);
+
   const lastStateRef = useRef(false);
   const noiseFloorRef = useRef(0.01);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     if (!stream) return;
 
+    mountedRef.current = true;
     let cancelled = false;
 
-    const audioCtx = new (window.AudioContext ||
-      window.webkitAudioContext)();
+    const AudioCtx =
+      window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioCtx();
     audioCtxRef.current = audioCtx;
 
     const source = audioCtx.createMediaStreamSource(stream);
     const analyser = audioCtx.createAnalyser();
+
     analyser.fftSize = fftSize;
+    analyser.smoothingTimeConstant = 0.2;
+
     source.connect(analyser);
     analyserRef.current = analyser;
 
@@ -45,15 +52,15 @@ const useVoiceActivity = (stream, options = {}) => {
       if (audioCtx.state === "suspended") {
         try {
           await audioCtx.resume();
-        } catch (err) {
-          console.warn("AudioContext resume failed", err);
+        } catch {
+          /* ignore */
         }
       }
     };
     resumeAudio();
 
     const detect = () => {
-      if (cancelled) return;
+      if (cancelled || !mountedRef.current) return;
 
       analyser.getByteTimeDomainData(buffer);
 
@@ -65,9 +72,10 @@ const useVoiceActivity = (stream, options = {}) => {
 
       const rms = Math.sqrt(sum / buffer.length);
 
-      // 🎯 adaptive noise floor
+      /* 🎯 Adaptive noise floor */
       noiseFloorRef.current =
-        noiseFloorRef.current * smoothing + rms * (1 - smoothing);
+        noiseFloorRef.current * smoothing +
+        rms * (1 - smoothing);
 
       const threshold = noiseFloorRef.current * sensitivity;
       const speaking = rms > threshold;
@@ -78,10 +86,15 @@ const useVoiceActivity = (stream, options = {}) => {
         if (speaking) {
           clearTimeout(silenceTimerRef.current);
           silenceTimerRef.current = null;
-          setIsSpeaking(true);
+
+          if (!isSpeaking) {
+            setIsSpeaking(true);
+          }
         } else {
           silenceTimerRef.current = setTimeout(() => {
-            setIsSpeaking(false);
+            if (mountedRef.current) {
+              setIsSpeaking(false);
+            }
             silenceTimerRef.current = null;
           }, silenceTime);
         }
@@ -93,9 +106,12 @@ const useVoiceActivity = (stream, options = {}) => {
     detect();
 
     return () => {
+      mountedRef.current = false;
       cancelled = true;
+
       cancelAnimationFrame(rafRef.current);
       clearTimeout(silenceTimerRef.current);
+
       analyser.disconnect();
       source.disconnect();
       audioCtx.close();
