@@ -15,6 +15,7 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
   const pcRef = useRef(null);
   const micTrackRef = useRef(null);
   const pendingIceRef = useRef([]);
+
   const startedRef = useRef(false);
   const endedRef = useRef(false);
 
@@ -23,7 +24,9 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isMicReady, setIsMicReady] = useState(false);
 
-  /* 🔌 CREATE PEER */
+  /* =======================
+     CREATE PEER (SAFE)
+  ======================= */
   const createPeer = useCallback(() => {
     if (pcRef.current) return pcRef.current;
 
@@ -42,11 +45,22 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
       }
     };
 
+    pc.onconnectionstatechange = () => {
+      if (
+        pc.connectionState === "failed" ||
+        pc.connectionState === "disconnected"
+      ) {
+        endCall(false);
+      }
+    };
+
     pcRef.current = pc;
     return pc;
   }, [socket, matchId]);
 
-  /* 🎤 MIC */
+  /* =======================
+     PREPARE MIC (ONCE)
+  ======================= */
   const prepareMic = useCallback(async () => {
     if (micTrackRef.current) return;
 
@@ -59,14 +73,18 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     setIsMicReady(true);
 
     const pc = createPeer();
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
   }, [createPeer]);
 
-  /* ▶️ START CALL (CALLER ONLY) */
+  /* =======================
+     START CALL (CALLER)
+  ======================= */
   const startCall = useCallback(async () => {
     if (!isCaller || startedRef.current || !socket || !matchId) return;
 
     startedRef.current = true;
+    endedRef.current = false;
+
     await prepareMic();
 
     const pc = pcRef.current;
@@ -76,7 +94,9 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     socket.emit("offer", { matchId, offer });
   }, [isCaller, socket, matchId, prepareMic]);
 
-  /* 🔁 SIGNALING */
+  /* =======================
+     SIGNALING
+  ======================= */
   useEffect(() => {
     if (!socket) return;
 
@@ -85,9 +105,13 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
 
       const pc = createPeer();
       await prepareMic();
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(offer)
+      );
 
-      pendingIceRef.current.forEach((c) => pc.addIceCandidate(c));
+      pendingIceRef.current.forEach((c) =>
+        pc.addIceCandidate(c)
+      );
       pendingIceRef.current = [];
 
       const answer = await pc.createAnswer();
@@ -97,11 +121,15 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     };
 
     const onAnswer = async ({ answer }) => {
-      await pcRef.current?.setRemoteDescription(
+      if (!pcRef.current) return;
+
+      await pcRef.current.setRemoteDescription(
         new RTCSessionDescription(answer)
       );
 
-      pendingIceRef.current.forEach((c) => pcRef.current.addIceCandidate(c));
+      pendingIceRef.current.forEach((c) =>
+        pcRef.current.addIceCandidate(c)
+      );
       pendingIceRef.current = [];
     };
 
@@ -120,24 +148,28 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     socket.on("offer", onOffer);
     socket.on("answer", onAnswer);
     socket.on("ice-candidate", onIce);
-    socket.on("audio:ended", onRemoteEnd);
+    socket.on("audio:end", onRemoteEnd);
 
     return () => {
       socket.off("offer", onOffer);
       socket.off("answer", onAnswer);
       socket.off("ice-candidate", onIce);
-      socket.off("audio:ended", onRemoteEnd);
+      socket.off("audio:end", onRemoteEnd);
     };
   }, [socket, matchId, isCaller, prepareMic, createPeer]);
 
-  /* 🔇 MUTE */
+  /* =======================
+     MUTE
+  ======================= */
   const toggleMute = () => {
     if (!micTrackRef.current) return;
     micTrackRef.current.enabled = !micTrackRef.current.enabled;
     setIsMuted(!micTrackRef.current.enabled);
   };
 
-  /* ❌ END CALL */
+  /* =======================
+     END CALL (SAFE)
+  ======================= */
   const endCall = useCallback(
     (emit = true) => {
       if (endedRef.current) return;
