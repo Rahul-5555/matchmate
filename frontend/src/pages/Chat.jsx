@@ -9,6 +9,8 @@ import ChatAudioController from "./ChatAudioController";
 import useWebRTC from "../hooks/useWebRTC";
 import MessageBubble from "../components/MessageBubble";
 
+const BAD_WORDS = ["fuck", "sex", "nude", "rape"]; // basic guard
+
 const Chat = ({
   socket,
   onEnd,
@@ -21,29 +23,31 @@ const Chat = ({
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [seconds, setSeconds] = useState(0);
 
   const [showToast, setShowToast] = useState(false);
   const [toastText, setToastText] = useState("");
 
-  const [seconds, setSeconds] = useState(0);
-
   const bottomRef = useRef(null);
   const typingTimeout = useRef(null);
   const exitHandledRef = useRef(false);
+  const timerRef = useRef(null);
 
   const webrtc = useWebRTC({ socket, matchId, isCaller });
 
   /* =======================
-     TIMER
+     SAFE TIMER
   ======================= */
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
       setSeconds((s) => s + 1);
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, []);
+    return () => clearInterval(timerRef.current);
+  }, [matchId]);
 
   const formatTime = () => {
     const m = Math.floor(seconds / 60);
@@ -95,16 +99,22 @@ const Chat = ({
       triggerExit(reason === "timeout" ? "timeout" : "left");
     };
 
+    const onDisconnect = () => {
+      triggerExit("left");
+    };
+
     socket.on("receive_message", onReceive);
     socket.on("partner_typing", onTyping);
     socket.on("partner_stop_typing", onStopTyping);
     socket.on("call-ended", onCallEnded);
+    socket.on("disconnect", onDisconnect);
 
     return () => {
       socket.off("receive_message", onReceive);
       socket.off("partner_typing", onTyping);
       socket.off("partner_stop_typing", onStopTyping);
       socket.off("call-ended", onCallEnded);
+      socket.off("disconnect", onDisconnect);
     };
   }, [socket]);
 
@@ -112,8 +122,21 @@ const Chat = ({
      SEND MESSAGE
   ======================= */
 
+  const containsBadWord = (value) => {
+    return BAD_WORDS.some((w) =>
+      value.toLowerCase().includes(w)
+    );
+  };
+
   const sendMessage = useCallback(() => {
     if (!text.trim()) return;
+
+    if (containsBadWord(text)) {
+      setToastText("⚠️ Please be respectful.");
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 1500);
+      return;
+    }
 
     const msg = {
       id: crypto.randomUUID(),
@@ -122,6 +145,7 @@ const Chat = ({
     };
 
     setMessages((prev) => [...prev, msg]);
+
     socket.emit("send_message", msg);
     socket.emit("stop_typing");
 
@@ -133,6 +157,7 @@ const Chat = ({
   ======================= */
 
   const cleanupAndExit = () => {
+    clearInterval(timerRef.current);
     setShowToast(false);
     webrtc.endCall(false);
     setAudioOn(false);
@@ -146,11 +171,12 @@ const Chat = ({
     setToastText(
       reason === "timeout"
         ? "⏱️ Conversation ended (10 min limit)"
-        : "👀 Partner left"
+        : "👀 Partner disconnected"
     );
 
     setShowToast(true);
-    setTimeout(cleanupAndExit, 1600);
+
+    setTimeout(cleanupAndExit, 1700);
   };
 
   /* =======================
@@ -158,13 +184,14 @@ const Chat = ({
   ======================= */
 
   const reportUser = () => {
-    socket.emit("report_user");
-    alert("User reported. Thank you.");
+    socket.emit("report_user", { matchId });
+    setToastText("🚩 User reported. Thank you.");
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 1500);
   };
 
   return (
     <>
-      {/* TOAST */}
       {showToast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] bg-black text-white px-5 py-2 rounded-xl shadow-lg animate-fadeIn">
           {toastText}
@@ -231,6 +258,7 @@ const Chat = ({
                   value={text}
                   onChange={(e) => {
                     setText(e.target.value);
+
                     socket.emit("typing");
 
                     clearTimeout(typingTimeout.current);
@@ -239,7 +267,9 @@ const Chat = ({
                       700
                     );
                   }}
-                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && sendMessage()
+                  }
                   placeholder="Type a message…"
                   className="flex-1 px-4 py-3 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
