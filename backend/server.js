@@ -6,23 +6,25 @@ const cors = require("cors");
 const app = express();
 
 /* =======================
+   CONFIG
+======================= */
+
+const DAILY_LIMIT = 3;
+
+// sessionId -> count
+const userMatchCount = new Map();
+
+/* =======================
    HTTP CORS
 ======================= */
+
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-
-      const allowedOrigins = [
-        "http://localhost:5173",
-        "https://matchmatee.netlify.app",
-      ];
-
-      allowedOrigins.includes(origin)
-        ? callback(null, true)
-        : callback(new Error("CORS not allowed"));
-    },
-    credentials: true,
+    origin: [
+      "http://localhost:5173",
+      "https://matchmatee.netlify.app",
+    ],
+    methods: ["GET", "POST"],
   })
 );
 
@@ -31,228 +33,217 @@ const server = http.createServer(app);
 /* =======================
    SOCKET.IO
 ======================= */
+
 const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:5173",
       "https://matchmatee.netlify.app",
     ],
-    credentials: true,
+    methods: ["GET", "POST"],
   },
-  transports: ["polling", "websocket"],
+  transports: ["websocket"],
 });
 
 /* =======================
    STATE
 ======================= */
+
 const onlineUsers = new Set();
 let waitingQueue = [];
 
-const userPairs = {};     // socketId -> partnerId
-const userRooms = {};     // socketId -> matchId
-const matchTimers = {};   // matchId -> timeout
-const matchTimeouts = {}; // socketId -> timeout
+const userPairs = new Map();   // socketId -> partnerId
+const userRooms = new Map();   // socketId -> matchId
+const matchTimers = new Map(); // matchId -> timeout
 
 /* =======================
-   END MATCH (CHAT LEVEL)
+   HELPERS
 ======================= */
+
+function removeFromQueue(socketId) {
+  waitingQueue = waitingQueue.filter(id => id !== socketId);
+}
+
+function clearMatchTimer(matchId) {
+  if (matchTimers.has(matchId)) {
+    clearTimeout(matchTimers.get(matchId));
+    matchTimers.delete(matchId);
+  }
+}
+
+function incrementMatchCount(sessionId) {
+  const current = userMatchCount.get(sessionId) || 0;
+  userMatchCount.set(sessionId, current + 1);
+}
+
 function endMatch(socketId, reason = "ended") {
-  const matchId = userRooms[socketId];
+  const matchId = userRooms.get(socketId);
   if (!matchId) return;
 
-  const partnerId = userPairs[socketId];
+  const partnerId = userPairs.get(socketId);
 
-  // ⏱️ clear match timer
-  if (matchTimers[matchId]) {
-    clearTimeout(matchTimers[matchId]);
-    delete matchTimers[matchId];
-  }
+  clearMatchTimer(matchId);
 
-  // 🔔 CHAT / MATCH END (NOT AUDIO)
   io.to(matchId).emit("call-ended", { reason });
 
-  // 🚪 leave rooms safely
   setTimeout(() => {
     io.sockets.sockets.get(socketId)?.leave(matchId);
     io.sockets.sockets.get(partnerId)?.leave(matchId);
   }, 100);
 
-  delete userPairs[socketId];
-  delete userPairs[partnerId];
-  delete userRooms[socketId];
-  delete userRooms[partnerId];
+  userPairs.delete(socketId);
+  userPairs.delete(partnerId);
+  userRooms.delete(socketId);
+  userRooms.delete(partnerId);
 }
 
 /* =======================
    MATCH USERS
 ======================= */
+
 function tryMatch() {
   waitingQueue = waitingQueue.filter(
-    (id) => io.sockets.sockets.has(id) && !userRooms[id]
+    id => io.sockets.sockets.has(id) && !userRooms.has(id)
   );
 
   if (waitingQueue.length < 2) return;
 
-  const caller = waitingQueue.shift();
-  const callee = waitingQueue.shift();
-  if (!caller || !callee || caller === callee) return;
+  const user1 = waitingQueue.shift();
+  const user2 = waitingQueue.shift();
+
+  if (!user1 || !user2 || user1 === user2) return;
 
   const matchId =
     "match_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
-  userPairs[caller] = callee;
-  userPairs[callee] = caller;
-  userRooms[caller] = matchId;
-  userRooms[callee] = matchId;
+  userPairs.set(user1, user2);
+  userPairs.set(user2, user1);
 
-  io.sockets.sockets.get(caller)?.join(matchId);
-  io.sockets.sockets.get(callee)?.join(matchId);
+  userRooms.set(user1, matchId);
+  userRooms.set(user2, matchId);
 
-  io.to(caller).emit("match_found", { matchId, role: "caller" });
-  io.to(callee).emit("match_found", { matchId, role: "callee" });
+  io.sockets.sockets.get(user1)?.join(matchId);
+  io.sockets.sockets.get(user2)?.join(matchId);
 
-  // ⏱️ AUTO END MATCH (10 min)
-  matchTimers[matchId] = setTimeout(() => {
-    endMatch(caller, "timeout");
+  io.to(user1).emit("match_found", { matchId, role: "caller" });
+  io.to(user2).emit("match_found", { matchId, role: "callee" });
+
+  // 🔥 Increment usage based on sessionId
+  const s1 = io.sockets.sockets.get(user1);
+  const s2 = io.sockets.sockets.get(user2);
+
+  if (s1?.sessionId) incrementMatchCount(s1.sessionId);
+  if (s2?.sessionId) incrementMatchCount(s2.sessionId);
+
+  // 🔥 10 min timer
+  const timer = setTimeout(() => {
+    endMatch(user1, "timeout");
   }, 10 * 60 * 1000);
+
+  matchTimers.set(matchId, timer);
 }
 
 /* =======================
    SOCKET CONNECTION
 ======================= */
+
 io.on("connection", (socket) => {
-  console.log("🟢 CONNECT:", socket.id);
+
+  const sessionId = socket.handshake.auth?.sessionId;
+
+  if (!sessionId) {
+    socket.disconnect(true);
+    return;
+  }
+
+  socket.sessionId = sessionId;
+
+  console.log("🟢 CONNECT:", socket.id, "| Session:", sessionId);
 
   onlineUsers.add(socket.id);
   io.emit("online_count", onlineUsers.size);
 
   /* ---------- FIND MATCH ---------- */
+
   socket.on("find_match", () => {
-    if (!waitingQueue.includes(socket.id) && !userRooms[socket.id]) {
+
+    const currentCount = userMatchCount.get(socket.sessionId) || 0;
+
+    if (currentCount >= DAILY_LIMIT) {
+      socket.emit("limit_reached");
+      return;
+    }
+
+    if (!waitingQueue.includes(socket.id) && !userRooms.has(socket.id)) {
       waitingQueue.push(socket.id);
-
-      matchTimeouts[socket.id] = setTimeout(() => {
-        if (!userRooms[socket.id]) {
-          socket.emit("match_timeout");
-          waitingQueue = waitingQueue.filter(
-            (id) => id !== socket.id
-          );
-        }
-        delete matchTimeouts[socket.id];
-      }, 8000);
-
       tryMatch();
     }
   });
 
   /* ---------- SKIP ---------- */
+
   socket.on("skip", () => {
+
     endMatch(socket.id, "skipped");
+    removeFromQueue(socket.id);
 
-    waitingQueue = waitingQueue.filter(
-      (id) => id !== socket.id
-    );
+    const currentCount = userMatchCount.get(socket.sessionId) || 0;
+
+    if (currentCount >= DAILY_LIMIT) {
+      socket.emit("limit_reached");
+      return;
+    }
+
     waitingQueue.push(socket.id);
-
     tryMatch();
   });
 
-  /* ---------- CHAT (UPDATED) ---------- */
+  /* ---------- CHAT ---------- */
 
-  // SEND MESSAGE
   socket.on("send_message", (msg) => {
-    const partnerId = userPairs[socket.id];
+    const partnerId = userPairs.get(socket.id);
     if (!partnerId) return;
-
-    // send message to partner
     io.to(partnerId).emit("receive_message", msg);
-
-    // sender already has "sent"
   });
-
-  // MESSAGE DELIVERED
-  socket.on("message_delivered", ({ messageId }) => {
-    const partnerId = userPairs[socket.id];
-    if (!partnerId) return;
-
-    io.to(partnerId).emit("message_status", {
-      messageId,
-      status: "delivered",
-    });
-  });
-
-  // MESSAGE SEEN
-  socket.on("message_seen", ({ messageId }) => {
-    const partnerId = userPairs[socket.id];
-    if (!partnerId) return;
-
-    io.to(partnerId).emit("message_status", {
-      messageId,
-      status: "seen",
-    });
-  });
-
 
   socket.on("typing", () => {
-    const partnerId = userPairs[socket.id];
+    const partnerId = userPairs.get(socket.id);
     if (partnerId) io.to(partnerId).emit("partner_typing");
   });
 
   socket.on("stop_typing", () => {
-    const partnerId = userPairs[socket.id];
+    const partnerId = userPairs.get(socket.id);
     if (partnerId) io.to(partnerId).emit("partner_stop_typing");
   });
 
   /* ---------- WEBRTC SIGNALING ---------- */
+
   socket.on("offer", ({ matchId, offer }) => {
-    if (userRooms[socket.id] === matchId) {
+    if (userRooms.get(socket.id) === matchId) {
       socket.to(matchId).emit("offer", { offer });
     }
   });
 
   socket.on("answer", ({ matchId, answer }) => {
-    if (userRooms[socket.id] === matchId) {
+    if (userRooms.get(socket.id) === matchId) {
       socket.to(matchId).emit("answer", { answer });
     }
   });
 
   socket.on("ice-candidate", ({ matchId, candidate }) => {
-    if (userRooms[socket.id] === matchId) {
+    if (userRooms.get(socket.id) === matchId) {
       socket.to(matchId).emit("ice-candidate", { candidate });
     }
   });
 
-  /* ---------- 🔊 AUDIO ONLY ---------- */
-  socket.on("audio:end", ({ matchId }) => {
-    if (!matchId) return;
-    socket.to(matchId).emit("audio:ended");
-  });
-
-  /* ---------- 🔇 MUTE ---------- */
-  socket.on("mute", () => {
-    const partnerId = userPairs[socket.id];
-    if (partnerId) io.to(partnerId).emit("partner_muted");
-  });
-
-  socket.on("unmute", () => {
-    const partnerId = userPairs[socket.id];
-    if (partnerId) io.to(partnerId).emit("partner_unmuted");
-  });
-
   /* ---------- DISCONNECT ---------- */
+
   socket.on("disconnect", () => {
+
     console.log("🔴 DISCONNECT:", socket.id);
 
     endMatch(socket.id, "disconnect");
-
-    waitingQueue = waitingQueue.filter(
-      (id) => id !== socket.id
-    );
-
-    if (matchTimeouts[socket.id]) {
-      clearTimeout(matchTimeouts[socket.id]);
-      delete matchTimeouts[socket.id];
-    }
+    removeFromQueue(socket.id);
 
     onlineUsers.delete(socket.id);
     io.emit("online_count", onlineUsers.size);
@@ -262,6 +253,7 @@ io.on("connection", (socket) => {
 /* =======================
    START SERVER
 ======================= */
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log("🚀 Server running on port", PORT);

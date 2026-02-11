@@ -16,10 +16,11 @@ const AudioCall = ({ webrtc, onEnd }) => {
   /* =======================
      ATTACH AUDIO STREAMS
   ======================= */
+
   useEffect(() => {
     if (localStream && localAudioRef.current) {
       localAudioRef.current.srcObject = localStream;
-      localAudioRef.current.muted = true; // 🔥 prevent echo
+      localAudioRef.current.muted = true; // prevent echo
       localAudioRef.current.play?.().catch(() => { });
     }
   }, [localStream]);
@@ -34,6 +35,7 @@ const AudioCall = ({ webrtc, onEnd }) => {
   /* =======================
      SAFE TIMER
   ======================= */
+
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setTimeLeft((t) => {
@@ -49,8 +51,9 @@ const AudioCall = ({ webrtc, onEnd }) => {
   }, []);
 
   /* =======================
-     SAFE END (SINGLE FIRE)
+     SAFE END
   ======================= */
+
   const handleEnd = () => {
     if (endedRef.current) return;
     endedRef.current = true;
@@ -65,14 +68,17 @@ const AudioCall = ({ webrtc, onEnd }) => {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
+  const isEndingSoon = timeLeft <= 60;
+
   return (
     <div
       className="
-        fixed bottom-4 left-1/2 -translate-x-1/2
+        fixed bottom-6 left-1/2 -translate-x-1/2
         w-[92%] max-w-sm
-        bg-black/80 backdrop-blur-xl
+        bg-gradient-to-br from-black/90 to-slate-900/90
+        backdrop-blur-xl
         text-white
-        rounded-3xl px-5 py-4
+        rounded-3xl px-6 py-5
         shadow-2xl z-[9999]
         animate-slideUp
       "
@@ -81,19 +87,23 @@ const AudioCall = ({ webrtc, onEnd }) => {
       <audio ref={localAudioRef} autoPlay playsInline />
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      {/* STATUS */}
-      <div className="flex items-center justify-between text-xs opacity-80">
+      {/* HEADER */}
+      <div className="flex items-center justify-between text-xs opacity-90">
         <span className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          Connected • Anonymous
+          Anonymous Voice
         </span>
-        <span className="tabular-nums">
+
+        <span
+          className={`tabular-nums ${isEndingSoon ? "text-red-400 font-semibold" : ""
+            }`}
+        >
           ⏱ {formatTime(timeLeft)}
         </span>
       </div>
 
-      {/* VOICE VISUAL */}
-      <div className="mt-5 flex justify-center gap-2">
+      {/* VOICE VISUALIZER */}
+      <div className="mt-6 flex justify-center gap-2">
         {[1, 2, 3, 4].map((i) => (
           <span
             key={i}
@@ -104,29 +114,30 @@ const AudioCall = ({ webrtc, onEnd }) => {
       </div>
 
       {/* MICRO COPY */}
-      <p className="mt-4 text-center text-xs opacity-70">
-        You’re anonymous. Say hi 👋
+      <p className="mt-4 text-center text-xs opacity-60">
+        Stay respectful. 10 min max per conversation.
       </p>
 
       {/* CONTROLS */}
-      <div className="mt-4 flex justify-center gap-4">
+      <div className="mt-5 flex justify-center gap-4">
         <button
           onClick={toggleMute}
           className={`
-            px-5 py-2 rounded-xl text-sm transition
+            px-5 py-2 rounded-xl text-sm font-medium transition
             ${isMuted
-              ? "bg-yellow-500 text-black"
-              : "bg-white/10 hover:bg-white/20"}
+              ? "bg-yellow-400 text-black"
+              : "bg-white/10 hover:bg-white/20"
+            }
           `}
         >
-          {isMuted ? "Unmute" : "Mute"}
+          {isMuted ? "🔊 Unmute" : "🔇 Mute"}
         </button>
 
         <button
           onClick={handleEnd}
           className="
-            px-6 py-2 rounded-xl text-sm
-            bg-red-500 hover:bg-red-600
+            px-6 py-2 rounded-xl text-sm font-medium
+            bg-red-500 hover:bg-red-600 transition
           "
         >
           End Call
@@ -138,7 +149,7 @@ const AudioCall = ({ webrtc, onEnd }) => {
         {`
           @keyframes voice {
             0% { transform: scale(0.6); opacity: 0.4; }
-            50% { transform: scale(1.2); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 1; }
             100% { transform: scale(0.6); opacity: 0.4; }
           }
           .animate-voice {

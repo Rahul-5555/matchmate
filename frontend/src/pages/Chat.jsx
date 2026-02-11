@@ -4,6 +4,7 @@ import React, {
   useState,
   useCallback,
 } from "react";
+
 import ChatAudioController from "./ChatAudioController";
 import useWebRTC from "../hooks/useWebRTC";
 import MessageBubble from "../components/MessageBubble";
@@ -16,12 +17,15 @@ const Chat = ({
   setAudioOn,
   isCaller,
 }) => {
+
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
   const [showToast, setShowToast] = useState(false);
   const [toastText, setToastText] = useState("");
+
+  const [seconds, setSeconds] = useState(0);
 
   const bottomRef = useRef(null);
   const typingTimeout = useRef(null);
@@ -30,17 +34,38 @@ const Chat = ({
   const webrtc = useWebRTC({ socket, matchId, isCaller });
 
   /* =======================
+     TIMER
+  ======================= */
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSeconds((s) => s + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = () => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  };
+
+  /* =======================
      RESET ON NEW MATCH
   ======================= */
+
   useEffect(() => {
     exitHandledRef.current = false;
     setMessages([]);
     setShowToast(false);
+    setSeconds(0);
   }, [matchId]);
 
   /* =======================
      AUTO SCROLL
   ======================= */
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
@@ -48,6 +73,7 @@ const Chat = ({
   /* =======================
      SOCKET EVENTS
   ======================= */
+
   useEffect(() => {
     if (!socket) return;
 
@@ -58,38 +84,34 @@ const Chat = ({
           ...msg,
           id: msg.id ?? crypto.randomUUID(),
           from: "partner",
-          status: "delivered",
-          reactions: {
-            counts: {},
-            myReaction: null,
-          },
         },
       ]);
     };
 
     const onTyping = () => setIsTyping(true);
     const onStopTyping = () => setIsTyping(false);
-    const onPartnerLeft = () => triggerExit("left");
-    const onTimeout = () => triggerExit("timeout");
+
+    const onCallEnded = ({ reason }) => {
+      triggerExit(reason === "timeout" ? "timeout" : "left");
+    };
 
     socket.on("receive_message", onReceive);
     socket.on("partner_typing", onTyping);
     socket.on("partner_stop_typing", onStopTyping);
-    socket.on("partner_left", onPartnerLeft);
-    socket.on("match_timeout", onTimeout);
+    socket.on("call-ended", onCallEnded);
 
     return () => {
       socket.off("receive_message", onReceive);
       socket.off("partner_typing", onTyping);
       socket.off("partner_stop_typing", onStopTyping);
-      socket.off("partner_left", onPartnerLeft);
-      socket.off("match_timeout", onTimeout);
+      socket.off("call-ended", onCallEnded);
     };
   }, [socket]);
 
   /* =======================
      SEND MESSAGE
   ======================= */
+
   const sendMessage = useCallback(() => {
     if (!text.trim()) return;
 
@@ -97,55 +119,19 @@ const Chat = ({
       id: crypto.randomUUID(),
       text,
       from: "me",
-      status: "sent",
-      reactions: {
-        counts: {},
-        myReaction: null,
-      },
     };
 
     setMessages((prev) => [...prev, msg]);
     socket.emit("send_message", msg);
     socket.emit("stop_typing");
+
     setText("");
   }, [text, socket]);
 
   /* =======================
-     SINGLE REACTION LOGIC
-  ======================= */
-  const handleReaction = (messageId, emoji) => {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== messageId) return m;
-
-        const prevReaction = m.reactions.myReaction;
-        const newCounts = { ...m.reactions.counts };
-
-        if (prevReaction) {
-          newCounts[prevReaction] -= 1;
-          if (newCounts[prevReaction] === 0) {
-            delete newCounts[prevReaction];
-          }
-        }
-
-        newCounts[emoji] = (newCounts[emoji] || 0) + 1;
-
-        return {
-          ...m,
-          reactions: {
-            counts: newCounts,
-            myReaction: emoji,
-          },
-        };
-      })
-    );
-
-    // socket.emit("message_reaction", { messageId, emoji });
-  };
-
-  /* =======================
      EXIT HANDLING
   ======================= */
+
   const cleanupAndExit = () => {
     setShowToast(false);
     webrtc.endCall(false);
@@ -159,45 +145,59 @@ const Chat = ({
 
     setToastText(
       reason === "timeout"
-        ? "⏱️ Chat timed out"
-        : "👀 Partner left the chat"
+        ? "⏱️ Conversation ended (10 min limit)"
+        : "👀 Partner left"
     );
 
     setShowToast(true);
-    setTimeout(cleanupAndExit, 1800);
+    setTimeout(cleanupAndExit, 1600);
+  };
+
+  /* =======================
+     REPORT USER
+  ======================= */
+
+  const reportUser = () => {
+    socket.emit("report_user");
+    alert("User reported. Thank you.");
   };
 
   return (
     <>
       {/* TOAST */}
       {showToast && (
-        <div className="
-          fixed top-6 z-[10000]
-          bg-black/90 text-white
-          px-5 py-2 rounded-xl
-          shadow-lg animate-fadeIn
-        ">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] bg-black text-white px-5 py-2 rounded-xl shadow-lg animate-fadeIn">
           {toastText}
         </div>
       )}
 
       <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
-        {/* HEADER */}
-        <div className="
-          flex justify-between items-center
-          px-4 py-3
-          border-b border-slate-200 dark:border-slate-800
-        ">
-          <span className="text-sm text-slate-600 dark:text-slate-300">
-            🟢 Connected
-          </span>
 
-          <button
-            onClick={cleanupAndExit}
-            className="text-sm text-red-500 hover:text-red-600"
-          >
-            End
-          </button>
+        {/* HEADER */}
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-green-500">🟢 Connected</span>
+            <span className="text-slate-500 dark:text-slate-400">
+              ⏱ {formatTime()}
+            </span>
+          </div>
+
+          <div className="flex gap-4 items-center">
+            <button
+              onClick={reportUser}
+              className="text-xs text-yellow-500 hover:text-yellow-600"
+            >
+              🚩 Report
+            </button>
+
+            <button
+              onClick={cleanupAndExit}
+              className="text-sm text-red-500 hover:text-red-600"
+            >
+              End
+            </button>
+          </div>
         </div>
 
         {audioOn ? (
@@ -212,11 +212,7 @@ const Chat = ({
             {/* CHAT BODY */}
             <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
               {messages.map((m) => (
-                <MessageBubble
-                  key={m.id}
-                  m={m}
-                  onReact={handleReaction}
-                />
+                <MessageBubble key={m.id} m={m} />
               ))}
 
               {isTyping && (
@@ -229,11 +225,7 @@ const Chat = ({
             </div>
 
             {/* INPUT */}
-            <div className="
-              sticky bottom-0 p-3
-              border-t border-slate-200 dark:border-slate-800
-              bg-white dark:bg-slate-900
-            ">
+            <div className="sticky bottom-0 p-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <div className="flex gap-3 items-center">
                 <input
                   value={text}
@@ -249,21 +241,12 @@ const Chat = ({
                   }}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
                   placeholder="Type a message…"
-                  className="
-                    flex-1 px-4 py-3 rounded-full
-                    bg-slate-100 dark:bg-slate-800
-                    text-slate-900 dark:text-white
-                    focus:outline-none focus:ring-2 focus:ring-indigo-500
-                  "
+                  className="flex-1 px-4 py-3 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
 
                 <button
                   onClick={sendMessage}
-                  className="
-                    px-5 py-3 rounded-full
-                    bg-indigo-600 text-white
-                    hover:bg-indigo-700
-                  "
+                  className="px-5 py-3 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
                 >
                   Send
                 </button>
@@ -273,7 +256,6 @@ const Chat = ({
         )}
       </div>
 
-      {/* MICRO ANIMATION */}
       <style>
         {`
           @keyframes fadeIn {
