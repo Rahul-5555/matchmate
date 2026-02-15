@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 const CALL_DURATION = 10 * 60; // 10 minutes
 
 const AudioCall = ({ webrtc, onEnd }) => {
-  const { localStream, remoteStream, isMuted, toggleMute } = webrtc;
+  const { localStream, remoteStream, isMuted, toggleMute, connectionState } =
+    webrtc;
 
   const [timeLeft, setTimeLeft] = useState(CALL_DURATION);
 
@@ -20,7 +21,7 @@ const AudioCall = ({ webrtc, onEnd }) => {
   useEffect(() => {
     if (localStream && localAudioRef.current) {
       localAudioRef.current.srcObject = localStream;
-      localAudioRef.current.muted = true; // prevent echo
+      localAudioRef.current.muted = true;
       localAudioRef.current.play?.().catch(() => { });
     }
   }, [localStream]);
@@ -33,10 +34,20 @@ const AudioCall = ({ webrtc, onEnd }) => {
   }, [remoteStream]);
 
   /* =======================
-     SAFE TIMER
+     TIMER LOGIC (STABLE)
   ======================= */
 
   useEffect(() => {
+    // Only start timer if fully connected and streams exist
+    if (
+      connectionState !== "connected" ||
+      !localStream ||
+      !remoteStream ||
+      endedRef.current
+    ) {
+      return;
+    }
+
     timerRef.current = setInterval(() => {
       setTimeLeft((t) => {
         if (t <= 1) {
@@ -47,18 +58,40 @@ const AudioCall = ({ webrtc, onEnd }) => {
       });
     }, 1000);
 
-    return () => clearInterval(timerRef.current);
-  }, []);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [connectionState, localStream, remoteStream]);
 
   /* =======================
-     SAFE END
+     FORCE STOP TIMER IF STREAM LOST
+  ======================= */
+
+  useEffect(() => {
+    if (!localStream || !remoteStream) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+  }, [localStream, remoteStream]);
+
+  /* =======================
+     SAFE END HANDLER
   ======================= */
 
   const handleEnd = () => {
     if (endedRef.current) return;
     endedRef.current = true;
 
-    clearInterval(timerRef.current);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
     onEnd?.();
   };
 

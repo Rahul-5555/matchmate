@@ -6,12 +6,13 @@ const ChatAudioController = ({
   setAudioOn,
   isCaller,
   webrtc,
+  onEndCall,   // 👈 NEW
 }) => {
 
   const startedRef = useRef(false);
   const endingRef = useRef(false);
 
-  const { startCall, endCall } = webrtc;
+  const { startCall } = webrtc;
 
   const [callSeconds, setCallSeconds] = useState(0);
 
@@ -68,7 +69,10 @@ const ChatAudioController = ({
     if (endingRef.current) return;
     endingRef.current = true;
 
-    endCall(true); // notify server
+    // 👇 Call parent handler (emits to server)
+    onEndCall?.();
+
+    // Turn off audio UI
     setAudioOn(false);
   };
 
@@ -77,7 +81,6 @@ const ChatAudioController = ({
   return (
     <div className="flex flex-col items-center justify-center flex-1 bg-gradient-to-br from-slate-950 to-black text-white">
 
-      {/* Call Status */}
       <div className="text-center mb-6">
         <div className="text-green-400 text-sm mb-1">
           🔊 Voice Connected
@@ -87,13 +90,11 @@ const ChatAudioController = ({
         </div>
       </div>
 
-      {/* Main Audio UI */}
       <AudioCall
         webrtc={webrtc}
         onEnd={handleEnd}
       />
 
-      {/* Safety Note */}
       <div className="mt-6 text-xs opacity-40">
         Stay respectful. You can end anytime.
       </div>

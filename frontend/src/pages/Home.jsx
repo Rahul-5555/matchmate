@@ -5,10 +5,9 @@ import StatBar from "../components/StatBar";
 import Matching from "./Matching";
 import Chat from "../pages/Chat";
 
-import heroImg from "../assets/heroS.png";
+// import heroImg from "../assets/heroS.png";
 import Header from "../components/Header";
 import ThemeToggle from "../components/ThemeToggle";
-
 const Home = () => {
 
   /* =======================
@@ -41,6 +40,7 @@ const Home = () => {
 
   const socketRef = useRef(null);
   const isMatchingRef = useRef(false);
+
 
   /* =======================
      SOCKET INIT
@@ -90,8 +90,9 @@ const Home = () => {
   ======================= */
 
   const handleMatched = ({ matchId, role }) => {
-    isMatchingRef.current = false;
+    if (stage !== "matching") return; // safety guard
 
+    isMatchingRef.current = false;
     setMatchId(matchId);
     setIsCaller(role === "caller");
 
@@ -100,22 +101,21 @@ const Home = () => {
     setStage("chat");
   };
 
+
   /* =======================
      END CHAT
   ======================= */
 
   const handleEnd = () => {
-    if (socketRef.current) {
-      socketRef.current.emit("skip");
-    }
-
     setAudioOn(false);
     setMatchId(null);
     setIsCaller(false);
     isMatchingRef.current = false;
 
-    setStage("matching");
+    setStage("home"); // go home only
   };
+
+
 
   /* =======================
      CONDITIONAL RENDER
@@ -162,8 +162,8 @@ const Home = () => {
         {/* HERO */}
         <div className="relative w-full max-w-5xl h-[500px] rounded-[32px] overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.75)]">
           <img
-            src={heroImg}
-            alt="Anonymous chat"
+            // src={heroImg}
+            alt=""
             className="w-full h-full object-cover"
           />
 

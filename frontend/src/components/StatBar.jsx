@@ -91,33 +91,50 @@ const StatBar = ({
   return (
     <div
       className="
-        mt-7 mx-auto w-full max-w-md
-        rounded-2xl px-5 py-3
-        flex items-center justify-between
-        backdrop-blur-xl
-        bg-white/90 dark:bg-white/5
-        border border-slate-200 dark:border-white/10
-        shadow-md dark:shadow-lg
-        transition-all
-      "
+    mt-5 sm:mt-7
+    mx-auto
+    w-[92%] sm:w-full
+    max-w-sm sm:max-w-md
+    rounded-xl sm:rounded-2xl
+    px-3 sm:px-5
+    py-2.5 sm:py-3
+    flex items-center justify-between
+    backdrop-blur-xl
+    bg-white/90 dark:bg-white/5
+    border border-slate-200 dark:border-white/10
+    shadow-md dark:shadow-lg
+    transition-all
+  "
     >
-
       {/* ONLINE */}
-      <div className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-white">
+      <div className="flex mt-2 items-center gap-3 sm:gap-4">
 
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-60 animate-ping" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
-        </span>
+        {/* Online Dot */}
+        <div className="relative mb-3 flex items-center justify-center">
+          {/* Ping Ring */}
+          <span className="absolute h-3 w-3 rounded-full bg-green-400/60 animate-ping" />
 
+          {/* Solid Dot */}
+          <span className="relative h-2.5 w-2.5 rounded-full bg-green-500" />
+        </div>
+
+
+        {/* Text Content */}
         <div className="flex flex-col leading-tight">
-          <span>{displayCount.toLocaleString()} online</span>
-          <span className="text-[11px] opacity-60">
+          <span className="text-sm sm:text-base font-semibold text-slate-800 dark:text-white tabular-nums">
+            {displayCount.toLocaleString()}
+            <span className="ml-1 text-slate-600 dark:text-white/70 font-medium">
+              online
+            </span>
+          </span>
+
+          <span className="text-[11px] sm:text-xs text-slate-500 dark:text-white/50">
             Real people active now
           </span>
         </div>
 
       </div>
+
 
       {/* STATUS */}
       <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-white/70">

@@ -16,6 +16,7 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
   const pcRef = useRef(null);
   const micTrackRef = useRef(null);
   const pendingIceRef = useRef([]);
+  const audioContextRef = useRef(null);
 
   const startedRef = useRef(false);
   const endedRef = useRef(false);
@@ -27,11 +28,10 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
   const [connectionState, setConnectionState] = useState("idle");
 
   /* =======================
-     CREATE PEER (SAFE)
+     CREATE PEER
   ======================= */
 
   const createPeer = useCallback(() => {
-
     if (pcRef.current) return pcRef.current;
 
     const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -57,41 +57,78 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
         pc.connectionState === "disconnected" ||
         pc.connectionState === "closed"
       ) {
-        endCall(false);
+        endCall();
       }
     };
 
     pcRef.current = pc;
     return pc;
-
   }, [socket, matchId]);
 
   /* =======================
-     PREPARE MIC (SAFE)
+     PREPARE MIC (PRO AUDIO)
   ======================= */
 
   const prepareMic = useCallback(async () => {
     if (micTrackRef.current) return;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+      const rawStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1,
+          latency: 0,
+        },
       });
 
-      micTrackRef.current = stream.getAudioTracks()[0];
-      setLocalStream(stream);
+      // 🔥 Web Audio Processing (Remove low frequency noise like fan/hum)
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+
+      const source = audioContext.createMediaStreamSource(rawStream);
+
+      const highpass = audioContext.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 100; // remove low hum
+
+      const compressor = audioContext.createDynamicsCompressor();
+      compressor.threshold.value = -50;
+      compressor.knee.value = 40;
+      compressor.ratio.value = 12;
+      compressor.attack.value = 0;
+      compressor.release.value = 0.25;
+
+      const destination = audioContext.createMediaStreamDestination();
+
+      source.connect(highpass);
+      highpass.connect(compressor);
+      compressor.connect(destination);
+
+      const processedStream = destination.stream;
+
+      micTrackRef.current = processedStream.getAudioTracks()[0];
+      setLocalStream(processedStream);
       setIsMicReady(true);
 
       const pc = createPeer();
-      stream.getTracks().forEach((track) =>
-        pc.addTrack(track, stream)
-      );
+      pc.addTrack(micTrackRef.current, processedStream);
+
+      // 🔥 Optimize bitrate (clear voice, no robotic compression)
+      const sender = pc.getSenders().find(s => s.track?.kind === "audio");
+
+      if (sender) {
+        const params = sender.getParameters();
+        params.encodings = [{ maxBitrate: 64000 }];
+        sender.setParameters(params);
+      }
 
     } catch (err) {
       console.error("Mic permission denied:", err);
-      endCall(false);
+      endCall();
     }
-
   }, [createPeer]);
 
   /* =======================
@@ -99,7 +136,6 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
   ======================= */
 
   const startCall = useCallback(async () => {
-
     if (!isCaller || startedRef.current || !socket || !matchId)
       return;
 
@@ -116,7 +152,6 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     await pc.setLocalDescription(offer);
 
     socket.emit("offer", { matchId, offer });
-
   }, [isCaller, socket, matchId, prepareMic]);
 
   /* =======================
@@ -170,20 +205,15 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
       }
     };
 
-    const onRemoteEnd = () => endCall(false);
-
     socket.on("offer", onOffer);
     socket.on("answer", onAnswer);
     socket.on("ice-candidate", onIce);
-    socket.on("audio:end", onRemoteEnd);
 
     return () => {
       socket.off("offer", onOffer);
       socket.off("answer", onAnswer);
       socket.off("ice-candidate", onIce);
-      socket.off("audio:end", onRemoteEnd);
     };
-
   }, [socket, matchId, isCaller, prepareMic, createPeer]);
 
   /* =======================
@@ -198,41 +228,37 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
   };
 
   /* =======================
-     END CALL (SAFE CLEANUP)
+     END CALL
   ======================= */
 
-  const endCall = useCallback(
-    (emit = true) => {
+  const endCall = useCallback(() => {
+    if (endedRef.current) return;
+    endedRef.current = true;
 
-      if (endedRef.current) return;
-      endedRef.current = true;
-
+    try {
       pcRef.current?.getSenders().forEach((sender) => {
-        try { sender.track?.stop(); } catch { }
+        sender.track?.stop();
       });
+    } catch { }
 
-      pcRef.current?.close();
-      pcRef.current = null;
+    pcRef.current?.close();
+    pcRef.current = null;
 
-      localStream?.getTracks().forEach((t) => t.stop());
+    localStream?.getTracks().forEach((t) => t.stop());
 
-      micTrackRef.current = null;
-      pendingIceRef.current = [];
-      startedRef.current = false;
+    audioContextRef.current?.close();
+    audioContextRef.current = null;
 
-      setLocalStream(null);
-      setRemoteStream(null);
-      setIsMuted(false);
-      setIsMicReady(false);
-      setConnectionState("idle");
+    micTrackRef.current = null;
+    pendingIceRef.current = [];
+    startedRef.current = false;
 
-      if (emit && socket && matchId) {
-        socket.emit("audio:end", { matchId });
-      }
-
-    },
-    [socket, matchId, localStream]
-  );
+    setLocalStream(null);
+    setRemoteStream(null);
+    setIsMuted(false);
+    setIsMicReady(false);
+    setConnectionState("idle");
+  }, [localStream]);
 
   return {
     localStream,

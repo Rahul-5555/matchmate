@@ -236,6 +236,15 @@ io.on("connection", (socket) => {
     }
   });
 
+  /* ---------- MANUAL END CALL ---------- */
+
+  socket.on("call-ended", ({ matchId, reason }) => {
+    if (userRooms.get(socket.id) !== matchId) return;
+
+    endMatch(socket.id, reason || "ended");
+  });
+
+
   /* ---------- DISCONNECT ---------- */
 
   socket.on("disconnect", () => {
