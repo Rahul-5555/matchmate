@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 readme.md
+README.md
 
 # Editor directories and files
 .vscode/*

@@ -22,8 +22,6 @@ const StatBar = ({
     };
 
     socket.on("online_count", handleOnline);
-
-    // 🔥 IMPORTANT: request initial count
     socket.emit("get_online_count");
 
     return () => {
@@ -65,24 +63,27 @@ const StatBar = ({
   }, [online]);
 
   /* =======================
-     STATUS STYLES
+     STATUS MAP
   ======================= */
 
   const STATUS_MAP = {
     matching: {
       text: "Matching",
-      color: "bg-red-500",
-      animate: "animate-pulse",
+      dot: "bg-red-500",
+      textColor: "text-red-500 dark:text-red-400",
+      pulse: "animate-pulse",
     },
     connected: {
       text: "Connected",
-      color: "bg-green-500",
-      animate: "",
+      dot: "bg-green-500",
+      textColor: "text-green-600 dark:text-green-400",
+      pulse: "",
     },
     idle: {
       text: "Ready",
-      color: "bg-yellow-500",
-      animate: "animate-pulse",
+      dot: "bg-yellow-500",
+      textColor: "text-yellow-600 dark:text-yellow-400",
+      pulse: "animate-pulse",
     },
   };
 
@@ -95,9 +96,10 @@ const StatBar = ({
         mx-auto w-full max-w-xl
         rounded-xl
         px-6 py-4
-        bg-[#0f0f0f]
-        border border-[#1f1f1f]
-        shadow-[0_8px_20px_rgba(0,0,0,0.6)]
+        bg-white dark:bg-[#0f0f0f]
+        border border-slate-200 dark:border-[#1f1f1f]
+        shadow-md dark:shadow-[0_8px_20px_rgba(0,0,0,0.6)]
+        transition-colors
       "
       >
         {/* TOP ROW */}
@@ -111,7 +113,7 @@ const StatBar = ({
               <span className="relative h-2.5 w-2.5 rounded-full bg-green-500" />
             </div>
 
-            <span className="text-sm font-semibold text-white tabular-nums leading-none">
+            <span className="text-sm font-semibold text-slate-900 dark:text-white tabular-nums leading-none">
               {displayCount.toLocaleString()}
             </span>
           </div>
@@ -122,43 +124,31 @@ const StatBar = ({
             <span className="relative flex items-center justify-center h-2.5 w-2.5">
               <span
                 className={`
-                absolute h-full w-full rounded-full
-                ${status === "connected"
-                    ? "bg-green-500"
-                    : status === "matching"
-                      ? "bg-red-500 animate-pulse"
-                      : "bg-yellow-500 animate-pulse"
-                  }
-              `}
+                  absolute h-full w-full rounded-full
+                  ${currentStatus.dot} ${currentStatus.pulse}
+                `}
               />
             </span>
 
             <span
               className={`
-              text-sm font-medium leading-none
-              ${status === "connected"
-                  ? "text-green-400"
-                  : status === "matching"
-                    ? "text-red-400"
-                    : "text-yellow-400"
-                }
-            `}
+                text-sm font-medium leading-none
+                ${currentStatus.textColor}
+              `}
             >
               {currentStatus.text}
             </span>
           </div>
         </div>
 
-        {/* SUBTEXT BELOW */}
-        <div className="mt-1 text-xs text-gray-500">
+        {/* SUBTEXT */}
+        <div className="mt-1 text-xs text-slate-500 dark:text-gray-500">
           people online
         </div>
 
       </div>
     </div>
   );
-
-
 };
 
 export default StatBar;

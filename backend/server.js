@@ -1,22 +1,41 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const cors = require("cors");
+import dotenv from "dotenv";
+dotenv.config();
 
-const app = express();
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+import { createClient } from "redis";
+import crypto from "crypto";
 
 /* =======================
    CONFIG
 ======================= */
 
 const DAILY_LIMIT = 3;
-
-// sessionId -> count
-const userMatchCount = new Map();
+const REPEAT_BLOCK_TIME = 60 * 60; // 60 minutes (seconds)
+const PORT = process.env.PORT || 5000;
 
 /* =======================
-   HTTP CORS
+   REDIS SETUP
 ======================= */
+
+const redis = createClient({
+  url: process.env.REDIS_URL || "redis://127.0.0.1:6379",
+});
+
+redis.on("error", (err) => {
+  console.error("Redis Error:", err);
+});
+
+await redis.connect();
+console.log("✅ Redis Connected");
+
+/* =======================
+   EXPRESS SETUP
+======================= */
+
+const app = express();
 
 app.use(
   cors({
@@ -30,10 +49,6 @@ app.use(
 
 const server = http.createServer(app);
 
-/* =======================
-   SOCKET.IO
-======================= */
-
 const io = new Server(server, {
   cors: {
     origin: [
@@ -46,37 +61,145 @@ const io = new Server(server, {
 });
 
 /* =======================
-   STATE
+   MEMORY STATE
 ======================= */
 
 const onlineUsers = new Set();
-let waitingQueue = [];
-
-const userPairs = new Map();   // socketId -> partnerId
-const userRooms = new Map();   // socketId -> matchId
-const matchTimers = new Map(); // matchId -> timeout
+const userPairs = new Map();
+const userRooms = new Map();
+const matchTimers = new Map();
 
 /* =======================
-   HELPERS
+   REDIS HELPERS
 ======================= */
 
-function removeFromQueue(socketId) {
-  waitingQueue = waitingQueue.filter(id => id !== socketId);
-}
+const queueKey = (interest) => {
+  return `match:queue:${interest || "global"}`;
+};
 
-function clearMatchTimer(matchId) {
+
+const addToQueue = async (socketId, interest) => {
+  await redis.lPush(queueKey(interest), socketId);
+};
+
+
+const removeFromQueue = async (socketId) => {
+  const keys = await redis.keys("match:queue:*");
+
+  for (const key of keys) {
+    await redis.lRem(key, 0, socketId);
+  }
+};
+
+
+const incrementMatchCount = async (sessionId) => {
+  const key = `daily_limit:${sessionId}`;
+  const count = await redis.incr(key);
+
+  if (count === 1) {
+    await redis.expire(key, 24 * 60 * 60);
+  }
+
+  return count;
+};
+
+const getMatchCount = async (sessionId) => {
+  const count = await redis.get(`daily_limit:${sessionId}`);
+  return parseInt(count || "0");
+};
+
+/* ===== Temporary Repeat Block ===== */
+
+const storeRecentMatch = async (session1, session2) => {
+  await redis.sAdd(`recent:${session1}`, session2);
+  await redis.expire(`recent:${session1}`, REPEAT_BLOCK_TIME);
+
+  await redis.sAdd(`recent:${session2}`, session1);
+  await redis.expire(`recent:${session2}`, REPEAT_BLOCK_TIME);
+};
+
+const isRecentlyMatched = async (session1, session2) => {
+  const result = await redis.sIsMember(`recent:${session1}`, session2);
+  return result === 1;
+};
+
+/* =======================
+   MATCHING LOGIC
+======================= */
+
+const tryMatch = async (interest) => {
+  try {
+    const key = queueKey(interest);
+
+    let queueLength = await redis.lLen(key);
+    console.log("Queue:", key, "Length:", queueLength);
+
+    if (queueLength < 2) return;
+
+    let user1 = null;
+    let user2 = null;
+
+    // 🔎 Find first valid connected user
+    while (!user1) {
+      const candidate = await redis.rPop(key);
+      if (!candidate) return;
+
+      if (io.sockets.sockets.has(candidate)) {
+        user1 = candidate;
+      }
+    }
+
+    // 🔎 Find second valid connected user
+    while (!user2) {
+      const candidate = await redis.rPop(key);
+      if (!candidate) {
+        // Put user1 back if no partner found
+        await redis.lPush(key, user1);
+        return;
+      }
+
+      if (io.sockets.sockets.has(candidate) && candidate !== user1) {
+        user2 = candidate;
+      }
+    }
+
+    const matchId = `match_${crypto.randomUUID()}`;
+
+    // 🧠 Store pairing
+    userPairs.set(user1, user2);
+    userPairs.set(user2, user1);
+
+    userRooms.set(user1, matchId);
+    userRooms.set(user2, matchId);
+
+    // 🏠 Join room
+    io.sockets.sockets.get(user1)?.join(matchId);
+    io.sockets.sockets.get(user2)?.join(matchId);
+
+    // 📡 Emit event
+    io.to(user1).emit("match_found", { matchId, role: "caller" });
+    io.to(user2).emit("match_found", { matchId, role: "callee" });
+
+    console.log("✅ Matched:", user1, "↔", user2);
+
+  } catch (error) {
+    console.error("Match Error:", error);
+  }
+};
+
+
+/* =======================
+   END MATCH
+======================= */
+
+const clearMatchTimer = (matchId) => {
   if (matchTimers.has(matchId)) {
     clearTimeout(matchTimers.get(matchId));
     matchTimers.delete(matchId);
   }
-}
+};
 
-function incrementMatchCount(sessionId) {
-  const current = userMatchCount.get(sessionId) || 0;
-  userMatchCount.set(sessionId, current + 1);
-}
-
-function endMatch(socketId, reason = "ended") {
+const endMatch = (socketId, reason = "ended") => {
   const matchId = userRooms.get(socketId);
   if (!matchId) return;
 
@@ -95,60 +218,13 @@ function endMatch(socketId, reason = "ended") {
   userPairs.delete(partnerId);
   userRooms.delete(socketId);
   userRooms.delete(partnerId);
-}
-
-/* =======================
-   MATCH USERS
-======================= */
-
-function tryMatch() {
-  waitingQueue = waitingQueue.filter(
-    id => io.sockets.sockets.has(id) && !userRooms.has(id)
-  );
-
-  if (waitingQueue.length < 2) return;
-
-  const user1 = waitingQueue.shift();
-  const user2 = waitingQueue.shift();
-
-  if (!user1 || !user2 || user1 === user2) return;
-
-  const matchId =
-    "match_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-
-  userPairs.set(user1, user2);
-  userPairs.set(user2, user1);
-
-  userRooms.set(user1, matchId);
-  userRooms.set(user2, matchId);
-
-  io.sockets.sockets.get(user1)?.join(matchId);
-  io.sockets.sockets.get(user2)?.join(matchId);
-
-  io.to(user1).emit("match_found", { matchId, role: "caller" });
-  io.to(user2).emit("match_found", { matchId, role: "callee" });
-
-  // 🔥 Increment usage based on sessionId
-  const s1 = io.sockets.sockets.get(user1);
-  const s2 = io.sockets.sockets.get(user2);
-
-  if (s1?.sessionId) incrementMatchCount(s1.sessionId);
-  if (s2?.sessionId) incrementMatchCount(s2.sessionId);
-
-  // 🔥 10 min timer
-  const timer = setTimeout(() => {
-    endMatch(user1, "timeout");
-  }, 10 * 60 * 1000);
-
-  matchTimers.set(matchId, timer);
-}
+};
 
 /* =======================
    SOCKET CONNECTION
 ======================= */
 
 io.on("connection", (socket) => {
-
   const sessionId = socket.handshake.auth?.sessionId;
 
   if (!sessionId) {
@@ -158,52 +234,59 @@ io.on("connection", (socket) => {
 
   socket.sessionId = sessionId;
 
-  console.log("🟢 CONNECT:", socket.id, "| Session:", sessionId);
+  console.log("🟢 CONNECT:", socket.id);
 
   onlineUsers.add(socket.id);
   io.emit("online_count", onlineUsers.size);
 
   /* ---------- FIND MATCH ---------- */
 
-  socket.on("find_match", () => {
+  socket.on("find_match", async (data) => {
+    const interest = data?.interest || "global";
 
-    const currentCount = userMatchCount.get(socket.sessionId) || 0;
+    console.log("Find match called:", socket.id, "Interest:", interest);
 
-    if (currentCount >= DAILY_LIMIT) {
+    socket.interest = interest;
+
+    const count = await getMatchCount(socket.sessionId);
+    if (count >= DAILY_LIMIT) {
       socket.emit("limit_reached");
       return;
     }
 
-    if (!waitingQueue.includes(socket.id) && !userRooms.has(socket.id)) {
-      waitingQueue.push(socket.id);
-      tryMatch();
-    }
+    await addToQueue(socket.id, interest);
+    await tryMatch(interest);
   });
 
   /* ---------- SKIP ---------- */
 
-  socket.on("skip", () => {
+  socket.on("skip", async () => {
+    try {
+      endMatch(socket.id, "skipped");
+      await removeFromQueue(socket.id);
 
-    endMatch(socket.id, "skipped");
-    removeFromQueue(socket.id);
+      const currentCount = await getMatchCount(socket.sessionId);
 
-    const currentCount = userMatchCount.get(socket.sessionId) || 0;
+      if (currentCount >= DAILY_LIMIT) {
+        socket.emit("limit_reached");
+        return;
+      }
 
-    if (currentCount >= DAILY_LIMIT) {
-      socket.emit("limit_reached");
-      return;
+      await addToQueue(socket.id);
+      await tryMatch();
+
+    } catch (error) {
+      console.error("Skip Error:", error);
     }
-
-    waitingQueue.push(socket.id);
-    tryMatch();
   });
 
   /* ---------- CHAT ---------- */
 
   socket.on("send_message", (msg) => {
     const partnerId = userPairs.get(socket.id);
-    if (!partnerId) return;
-    io.to(partnerId).emit("receive_message", msg);
+    if (partnerId) {
+      io.to(partnerId).emit("receive_message", msg);
+    }
   });
 
   socket.on("typing", () => {
@@ -236,23 +319,21 @@ io.on("connection", (socket) => {
     }
   });
 
-  /* ---------- MANUAL END CALL ---------- */
+  /* ---------- MANUAL END ---------- */
 
   socket.on("call-ended", ({ matchId, reason }) => {
-    if (userRooms.get(socket.id) !== matchId) return;
-
-    endMatch(socket.id, reason || "ended");
+    if (userRooms.get(socket.id) === matchId) {
+      endMatch(socket.id, reason || "ended");
+    }
   });
-
 
   /* ---------- DISCONNECT ---------- */
 
-  socket.on("disconnect", () => {
-
+  socket.on("disconnect", async () => {
     console.log("🔴 DISCONNECT:", socket.id);
 
     endMatch(socket.id, "disconnect");
-    removeFromQueue(socket.id);
+    await removeFromQueue(socket.id);
 
     onlineUsers.delete(socket.id);
     io.emit("online_count", onlineUsers.size);
@@ -260,10 +341,21 @@ io.on("connection", (socket) => {
 });
 
 /* =======================
+   GLOBAL ERROR HANDLING
+======================= */
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled Rejection:", err);
+});
+
+/* =======================
    START SERVER
 ======================= */
 
-const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log("🚀 Server running on port", PORT);
+  console.log(`🚀 Server running on port ${PORT}`);
 });

@@ -8,6 +8,8 @@ import Chat from "../pages/Chat";
 import heroImg from "../assets/heroImg.png";
 import Header from "../components/Header";
 import ThemeToggle from "../components/ThemeToggle";
+import InterestModal from "../components/InterestModal"; // ✅ NEW
+
 const Home = () => {
 
   /* =======================
@@ -41,6 +43,17 @@ const Home = () => {
   const socketRef = useRef(null);
   const isMatchingRef = useRef(false);
 
+  // ✅ NEW
+  const [showInterestModal, setShowInterestModal] = useState(false);
+  const [selectedInterest, setSelectedInterest] = useState("global");
+
+  const calculatedStatus =
+    stage === "matching"
+      ? "matching"
+      : stage === "chat"
+        ? "connected"
+        : "idle";
+
 
   /* =======================
      SOCKET INIT
@@ -68,21 +81,35 @@ const Home = () => {
   }, []);
 
   /* =======================
-     START MATCHING
+     START MATCHING (OPEN MODAL)
   ======================= */
 
   const startMatching = (selectedMode) => {
     if (!socketRef.current || isMatchingRef.current) return;
 
+    setMode(selectedMode);
+    setShowInterestModal(true);
+  };
+
+  /* =======================
+     CONFIRM MATCHING
+  ======================= */
+
+  const confirmMatching = () => {
+    if (!socketRef.current || isMatchingRef.current) return;
+
     isMatchingRef.current = true;
 
-    setMode(selectedMode);
     setMatchId(null);
     setIsCaller(false);
     setAudioOn(false);
 
     setStage("matching");
-    socketRef.current.emit("find_match");
+    setShowInterestModal(false);
+
+    socketRef.current.emit("find_match", {
+      interest: selectedInterest,
+    });
   };
 
   /* =======================
@@ -90,7 +117,7 @@ const Home = () => {
   ======================= */
 
   const handleMatched = ({ matchId, role }) => {
-    if (stage !== "matching") return; // safety guard
+    if (stage !== "matching") return;
 
     isMatchingRef.current = false;
     setMatchId(matchId);
@@ -100,7 +127,6 @@ const Home = () => {
 
     setStage("chat");
   };
-
 
   /* =======================
      END CHAT
@@ -112,10 +138,8 @@ const Home = () => {
     setIsCaller(false);
     isMatchingRef.current = false;
 
-    setStage("home"); // go home only
+    setStage("home");
   };
-
-
 
   /* =======================
      CONDITIONAL RENDER
@@ -135,15 +159,26 @@ const Home = () => {
         setAudioOn={setAudioOn}
         isCaller={isCaller}
         onEnd={handleEnd}
+        interest={selectedInterest}
       />
     );
   }
 
-
-  //  LANDING PAGE
+  /* =======================
+     LANDING PAGE
+  ======================= */
 
   return (
     <>
+      {/* Interest Modal */}
+      <InterestModal
+        isOpen={showInterestModal}
+        selectedInterest={selectedInterest}
+        setSelectedInterest={setSelectedInterest}
+        onClose={() => setShowInterestModal(false)}
+        onConfirm={confirmMatching}
+      />
+
       {/* Logo */}
       <div className="absolute top-6 left-6 z-50">
         <span className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -163,7 +198,6 @@ const Home = () => {
         {/* ================= HERO ================= */}
         <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
 
-          {/* LEFT CONTENT */}
           <div className="space-y-8 md:pr-8 order-2 md:order-1">
 
             <h1 className="text-4xl sm:text-5xl font-bold leading-tight tracking-tight">
@@ -179,9 +213,9 @@ const Home = () => {
               Just tap and start talking.
             </p>
 
-            {socket && <StatBar socket={socket} />}
+            <StatBar socket={socket} status={calculatedStatus} />
 
-            {/* CTA */}
+
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
 
               <button
@@ -207,28 +241,14 @@ const Home = () => {
             </div>
           </div>
 
-          {/* RIGHT IMAGE */}
           <div className="flex justify-center order-1 md:order-2">
-
-            <div className="
-            w-full max-w-md md:max-w-lg
-            rounded-2xl 
-            overflow-hidden 
-            shadow-2xl 
-            border border-slate-200 dark:border-slate-800
-            bg-white dark:bg-slate-900
-            transition duration-300
-            hover:shadow-3xl
-          ">
-
+            <div className="w-full max-w-md md:max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <img
                 alt="hero"
                 src={heroImg}
                 className="w-full h-auto object-contain"
               />
-
             </div>
-
           </div>
 
         </div>
@@ -236,7 +256,6 @@ const Home = () => {
         {/* ================= TRUST SECTION ================= */}
         <div className="mt-40 w-full max-w-6xl">
 
-          {/* Section Header */}
           <div className="text-center mb-16">
             <h3 className="text-3xl font-bold tracking-tight">
               Why people love MatchMate
@@ -247,32 +266,16 @@ const Home = () => {
             </p>
           </div>
 
-          {/* Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
 
             {/* Card 1 */}
-            <div className="
-            group p-8 rounded-2xl 
-            bg-white dark:bg-slate-900 
-            border border-slate-200 dark:border-slate-800
-            transition-all duration-300
-            hover:shadow-2xl hover:-translate-y-2
-            text-center
-          ">
-
-              <div className="
-              w-14 h-14 mx-auto
-              flex items-center justify-center 
-              rounded-xl bg-indigo-50 dark:bg-indigo-900/30
-              text-2xl mb-6
-            ">
+            <div className="group p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 text-center">
+              <div className="w-14 h-14 mx-auto flex items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-2xl mb-6">
                 🔒
               </div>
-
               <h4 className="font-semibold text-lg mb-3">
                 100% Anonymous
               </h4>
-
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
                 No accounts. No tracking. No saved history.
                 Just honest conversations.
@@ -280,28 +283,13 @@ const Home = () => {
             </div>
 
             {/* Card 2 */}
-            <div className="
-            group p-8 rounded-2xl 
-            bg-white dark:bg-slate-900 
-            border border-slate-200 dark:border-slate-800
-            transition-all duration-300
-            hover:shadow-2xl hover:-translate-y-2
-            text-center
-          ">
-
-              <div className="
-              w-14 h-14 mx-auto
-              flex items-center justify-center 
-              rounded-xl bg-indigo-50 dark:bg-indigo-900/30
-              text-2xl mb-6
-            ">
+            <div className="group p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 text-center">
+              <div className="w-14 h-14 mx-auto flex items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-2xl mb-6">
                 ⚡
               </div>
-
               <h4 className="font-semibold text-lg mb-3">
                 Instant Matching
               </h4>
-
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
                 Connect with someone new in seconds.
                 No waiting. No setup.
@@ -309,28 +297,13 @@ const Home = () => {
             </div>
 
             {/* Card 3 */}
-            <div className="
-            group p-8 rounded-2xl 
-            bg-white dark:bg-slate-900 
-            border border-slate-200 dark:border-slate-800
-            transition-all duration-300
-            hover:shadow-2xl hover:-translate-y-2
-            text-center
-          ">
-
-              <div className="
-              w-14 h-14 mx-auto
-              flex items-center justify-center 
-              rounded-xl bg-indigo-50 dark:bg-indigo-900/30
-              text-2xl mb-6
-            ">
+            <div className="group p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 text-center">
+              <div className="w-14 h-14 mx-auto flex items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-2xl mb-6">
                 🎧
               </div>
-
               <h4 className="font-semibold text-lg mb-3">
                 Real Conversations
               </h4>
-
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
                 Choose text or voice.
                 Talk freely and naturally.
@@ -340,7 +313,7 @@ const Home = () => {
           </div>
         </div>
 
-        {/* Footer / Header Component */}
+        {/* Footer */}
         <div className="mt-40">
           <Header />
         </div>
@@ -348,10 +321,6 @@ const Home = () => {
       </div>
     </>
   );
-
-
-
-
 };
 
 export default Home;

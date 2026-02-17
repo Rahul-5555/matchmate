@@ -375,3 +375,31 @@ We start Month 1 work today.
 Aur yaad rakho —
 
 **Paise kamane ke liye pehle product strong banana padta hai.** 💪
+
+
+
+
+
+🚀 What We Should Improve First (Priority Order)
+🥇 1. Move State to Redis
+
+This is mandatory before launch.
+
+🥈 2. Prevent Repeat Matching
+
+Store last 5 partners per session.
+
+🥉 3. Improve Daily Limit System
+
+Move to Redis with TTL.
+
+4. Add Abuse Detection
+
+Basic bad word filter server-side.
+
+5. Add Soft User Token
+
+Generate secure random sessionId server-side.
+
+1️⃣ Keep it fully anonymous forever?
+2️⃣ Add optional lightweight profile layer?
