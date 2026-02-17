@@ -5,7 +5,7 @@ import StatBar from "../components/StatBar";
 import Matching from "./Matching";
 import Chat from "../pages/Chat";
 
-// import heroImg from "../assets/heroS.png";
+import heroImg from "../assets/heroImg.png";
 import Header from "../components/Header";
 import ThemeToggle from "../components/ThemeToggle";
 const Home = () => {
@@ -139,108 +139,219 @@ const Home = () => {
     );
   }
 
-  /* =======================
-     LANDING PAGE
-  ======================= */
+
+  //  LANDING PAGE
 
   return (
     <>
       {/* Logo */}
-      <div className="absolute top-4 left-4 z-50">
-        <span className="text-lg font-bold text-slate-900 dark:text-white">
+      <div className="absolute top-6 left-6 z-50">
+        <span className="text-lg font-semibold text-slate-900 dark:text-white">
           ♟ MatchMate
         </span>
       </div>
 
-      {/* Theme */}
-      <div className="absolute top-4 right-4 z-50">
+      {/* Theme Toggle */}
+      <div className="absolute top-6 right-6 z-50">
         <ThemeToggle />
       </div>
 
-      <div className="min-h-screen flex flex-col items-center justify-center pt-28 px-4 bg-gradient-to-br from-white to-slate-100 dark:from-slate-950 dark:to-slate-900 text-slate-900 dark:text-white">
+      <div className="min-h-screen flex flex-col items-center pt-28 px-6 
+                    bg-white dark:bg-slate-950 
+                    text-slate-900 dark:text-white">
 
-        {/* HERO */}
-        <div className="relative w-full max-w-5xl h-[500px] rounded-[32px] overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.75)]">
-          <img
-            // src={heroImg}
-            alt=""
-            className="w-full h-full object-cover"
-          />
+        {/* ================= HERO ================= */}
+        <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
 
-          <div className="absolute inset-0 bg-gradient-to-r from-white/90 via-white/70 to-white/20 dark:from-slate-950/95 dark:via-slate-950/70 dark:to-slate-950/30" />
+          {/* LEFT CONTENT */}
+          <div className="space-y-8 md:pr-8 order-2 md:order-1">
 
-          <div className="absolute top-14 left-8 sm:left-12 max-w-md">
-            <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
-              Feeling bored?
+            <h1 className="text-4xl sm:text-5xl font-bold leading-tight tracking-tight">
+              Meet new people.
               <br />
-              <span className="bg-gradient-to-r from-indigo-500 to-sky-500 bg-clip-text text-transparent">
-                Talk to someone real.
+              <span className="text-indigo-600 dark:text-indigo-400">
+                Instantly.
               </span>
             </h1>
 
-            <p className="mt-4 text-base text-slate-600 dark:text-white/85">
-              No login. No identity. Just honest conversations.
+            <p className="text-lg text-slate-600 dark:text-slate-300 max-w-md">
+              Anonymous conversations. Real humans. Zero pressure.
+              Just tap and start talking.
             </p>
 
-            <div className="mt-4">
-              {socket && <StatBar socket={socket} />}
+            {socket && <StatBar socket={socket} />}
+
+            {/* CTA */}
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+
+              <button
+                onClick={() => startMatching("chat")}
+                className="px-8 py-3 rounded-lg text-sm font-medium text-white 
+                         bg-indigo-600 hover:bg-indigo-500
+                         transition-all duration-300
+                         shadow-md hover:shadow-xl hover:-translate-y-1"
+              >
+                💬 Start Text Chat
+              </button>
+
+              <button
+                onClick={() => startMatching("audio")}
+                className="px-8 py-3 rounded-lg text-sm font-medium 
+                         border border-slate-300 dark:border-slate-700
+                         hover:bg-slate-100 dark:hover:bg-slate-800
+                         transition-all duration-300"
+              >
+                🎧 Start Voice Call
+              </button>
+
             </div>
+          </div>
+
+          {/* RIGHT IMAGE */}
+          <div className="flex justify-center order-1 md:order-2">
+
+            <div className="
+            w-full max-w-md md:max-w-lg
+            rounded-2xl 
+            overflow-hidden 
+            shadow-2xl 
+            border border-slate-200 dark:border-slate-800
+            bg-white dark:bg-slate-900
+            transition duration-300
+            hover:shadow-3xl
+          ">
+
+              <img
+                alt="hero"
+                src={heroImg}
+                className="w-full h-auto object-contain"
+              />
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* ================= TRUST SECTION ================= */}
+        <div className="mt-40 w-full max-w-6xl">
+
+          {/* Section Header */}
+          <div className="text-center mb-16">
+            <h3 className="text-3xl font-bold tracking-tight">
+              Why people love MatchMate
+            </h3>
+            <p className="mt-4 text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
+              Designed for meaningful conversations without pressure.
+              Simple, fast and completely anonymous.
+            </p>
+          </div>
+
+          {/* Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
+
+            {/* Card 1 */}
+            <div className="
+            group p-8 rounded-2xl 
+            bg-white dark:bg-slate-900 
+            border border-slate-200 dark:border-slate-800
+            transition-all duration-300
+            hover:shadow-2xl hover:-translate-y-2
+            text-center
+          ">
+
+              <div className="
+              w-14 h-14 mx-auto
+              flex items-center justify-center 
+              rounded-xl bg-indigo-50 dark:bg-indigo-900/30
+              text-2xl mb-6
+            ">
+                🔒
+              </div>
+
+              <h4 className="font-semibold text-lg mb-3">
+                100% Anonymous
+              </h4>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
+                No accounts. No tracking. No saved history.
+                Just honest conversations.
+              </p>
+            </div>
+
+            {/* Card 2 */}
+            <div className="
+            group p-8 rounded-2xl 
+            bg-white dark:bg-slate-900 
+            border border-slate-200 dark:border-slate-800
+            transition-all duration-300
+            hover:shadow-2xl hover:-translate-y-2
+            text-center
+          ">
+
+              <div className="
+              w-14 h-14 mx-auto
+              flex items-center justify-center 
+              rounded-xl bg-indigo-50 dark:bg-indigo-900/30
+              text-2xl mb-6
+            ">
+                ⚡
+              </div>
+
+              <h4 className="font-semibold text-lg mb-3">
+                Instant Matching
+              </h4>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
+                Connect with someone new in seconds.
+                No waiting. No setup.
+              </p>
+            </div>
+
+            {/* Card 3 */}
+            <div className="
+            group p-8 rounded-2xl 
+            bg-white dark:bg-slate-900 
+            border border-slate-200 dark:border-slate-800
+            transition-all duration-300
+            hover:shadow-2xl hover:-translate-y-2
+            text-center
+          ">
+
+              <div className="
+              w-14 h-14 mx-auto
+              flex items-center justify-center 
+              rounded-xl bg-indigo-50 dark:bg-indigo-900/30
+              text-2xl mb-6
+            ">
+                🎧
+              </div>
+
+              <h4 className="font-semibold text-lg mb-3">
+                Real Conversations
+              </h4>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
+                Choose text or voice.
+                Talk freely and naturally.
+              </p>
+            </div>
+
           </div>
         </div>
 
-        {/* CTA */}
-        <div className="mt-10 flex flex-col items-center gap-4">
-          <button
-            onClick={() => startMatching("chat")}
-            className="px-10 py-3 rounded-xl text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition shadow-lg"
-          >
-            💬 Start Text Chat
-          </button>
-
-          <button
-            onClick={() => startMatching("audio")}
-            className="px-10 py-3 rounded-xl text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 transition shadow-lg"
-          >
-            🎧 Start Voice Call
-          </button>
-        </div>
-
-        {/* TRUST SECTION */}
-        <div className="mt-16 max-w-4xl text-center space-y-6">
-          <h3 className="text-xl font-semibold">
-            Why MatchMate?
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-sm">
-            <div className="bg-white/5 p-6 rounded-xl backdrop-blur-lg shadow-md">
-              🔒 100% Anonymous
-              <p className="opacity-60 mt-2">
-                We don’t store profiles or personal data.
-              </p>
-            </div>
-
-            <div className="bg-white/5 p-6 rounded-xl backdrop-blur-lg shadow-md">
-              ⚡ Instant Matching
-              <p className="opacity-60 mt-2">
-                Connect within seconds.
-              </p>
-            </div>
-
-            <div className="bg-white/5 p-6 rounded-xl backdrop-blur-lg shadow-md">
-              🎧 Real Conversations
-              <p className="opacity-60 mt-2">
-                Text or voice — your choice.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-10">
+        {/* Footer / Header Component */}
+        <div className="mt-40">
           <Header />
         </div>
+
       </div>
     </>
   );
+
+
+
+
 };
 
 export default Home;

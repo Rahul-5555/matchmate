@@ -89,70 +89,76 @@ const StatBar = ({
   const currentStatus = STATUS_MAP[status];
 
   return (
-    <div
-      className="
-    mt-5 sm:mt-7
-    mx-auto
-    w-[92%] sm:w-full
-    max-w-sm sm:max-w-md
-    rounded-xl sm:rounded-2xl
-    px-3 sm:px-5
-    py-2.5 sm:py-3
-    flex items-center justify-between
-    backdrop-blur-xl
-    bg-white/90 dark:bg-white/5
-    border border-slate-200 dark:border-white/10
-    shadow-md dark:shadow-lg
-    transition-all
-  "
-    >
-      {/* ONLINE */}
-      <div className="flex mt-2 items-center gap-3 sm:gap-4">
+    <div className="mt-6 px-4">
+      <div
+        className="
+        mx-auto w-full max-w-xl
+        rounded-xl
+        px-6 py-4
+        bg-[#0f0f0f]
+        border border-[#1f1f1f]
+        shadow-[0_8px_20px_rgba(0,0,0,0.6)]
+      "
+      >
+        {/* TOP ROW */}
+        <div className="flex items-center justify-between">
 
-        {/* Online Dot */}
-        <div className="relative mb-3 flex items-center justify-center">
-          {/* Ping Ring */}
-          <span className="absolute h-3 w-3 rounded-full bg-green-400/60 animate-ping" />
+          {/* LEFT - DOT + NUMBER */}
+          <div className="flex items-center gap-3">
 
-          {/* Solid Dot */}
-          <span className="relative h-2.5 w-2.5 rounded-full bg-green-500" />
-        </div>
+            <div className="relative flex items-center justify-center h-5 w-5">
+              <span className="absolute h-3 w-3 rounded-full bg-green-500 opacity-30 animate-pulse" />
+              <span className="relative h-2.5 w-2.5 rounded-full bg-green-500" />
+            </div>
 
-
-        {/* Text Content */}
-        <div className="flex flex-col leading-tight">
-          <span className="text-sm sm:text-base font-semibold text-slate-800 dark:text-white tabular-nums">
-            {displayCount.toLocaleString()}
-            <span className="ml-1 text-slate-600 dark:text-white/70 font-medium">
-              online
+            <span className="text-sm font-semibold text-white tabular-nums leading-none">
+              {displayCount.toLocaleString()}
             </span>
-          </span>
+          </div>
 
-          <span className="text-[11px] sm:text-xs text-slate-500 dark:text-white/50">
-            Real people active now
-          </span>
+          {/* RIGHT - STATUS */}
+          <div className="flex items-center gap-2">
+
+            <span className="relative flex items-center justify-center h-2.5 w-2.5">
+              <span
+                className={`
+                absolute h-full w-full rounded-full
+                ${status === "connected"
+                    ? "bg-green-500"
+                    : status === "matching"
+                      ? "bg-red-500 animate-pulse"
+                      : "bg-yellow-500 animate-pulse"
+                  }
+              `}
+              />
+            </span>
+
+            <span
+              className={`
+              text-sm font-medium leading-none
+              ${status === "connected"
+                  ? "text-green-400"
+                  : status === "matching"
+                    ? "text-red-400"
+                    : "text-yellow-400"
+                }
+            `}
+            >
+              {currentStatus.text}
+            </span>
+          </div>
         </div>
 
-      </div>
-
-
-      {/* STATUS */}
-      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-white/70">
-
-        <span className="relative flex h-2 w-2">
-          <span
-            className={`
-              absolute inline-flex h-full w-full rounded-full
-              ${currentStatus.color} ${currentStatus.animate}
-            `}
-          />
-        </span>
-
-        {currentStatus.text}
+        {/* SUBTEXT BELOW */}
+        <div className="mt-1 text-xs text-gray-500">
+          people online
+        </div>
 
       </div>
     </div>
   );
+
+
 };
 
 export default StatBar;
