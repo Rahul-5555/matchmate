@@ -5,7 +5,7 @@ import StatBar from "../components/StatBar";
 import Matching from "./Matching";
 import Chat from "../pages/Chat";
 
-import heroImg from "../assets/heroimg.png";
+// import heroImg from "../assets/heroimg.png";
 import Header from "../components/Header";
 import ThemeToggle from "../components/ThemeToggle";
 import InterestModal from "../components/InterestModal"; // ✅ NEW
@@ -245,7 +245,7 @@ const Home = () => {
             <div className="w-full max-w-md md:max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <img
                 alt="hero"
-                src={heroImg}
+                src="/Heroimg.png"
                 className="w-full h-auto object-contain"
               />
             </div>
