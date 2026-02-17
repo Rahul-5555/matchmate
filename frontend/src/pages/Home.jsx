@@ -5,7 +5,7 @@ import StatBar from "../components/StatBar";
 import Matching from "./Matching";
 import Chat from "../pages/Chat";
 
-import heroImg from "../assets/heroImg.png";
+import heroImg from "../assets/heroimg.png";
 import Header from "../components/Header";
 import ThemeToggle from "../components/ThemeToggle";
 import InterestModal from "../components/InterestModal"; // ✅ NEW
