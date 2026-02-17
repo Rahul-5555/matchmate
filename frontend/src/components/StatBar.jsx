@@ -90,65 +90,82 @@ const StatBar = ({
   const currentStatus = STATUS_MAP[status];
 
   return (
-    <div className="mt-6 px-4">
+    <div className="mt-6 px-4 relative">
+
+      {/* Soft Glow Background */}
+      <div className="absolute inset-0 flex justify-center">
+        <div className="w-72 h-40 bg-green-400/20 blur-3xl rounded-full animate-pulse" />
+      </div>
+
       <div
         className="
+        relative
         mx-auto w-full max-w-xl
-        rounded-xl
-        px-6 py-4
-        bg-white dark:bg-[#0f0f0f]
+        rounded-2xl
+        px-6 py-5
+        bg-gradient-to-r from-white via-green-50 to-white
+        dark:from-[#111] dark:via-[#0f0f0f] dark:to-[#111]
         border border-slate-200 dark:border-[#1f1f1f]
-        shadow-md dark:shadow-[0_8px_20px_rgba(0,0,0,0.6)]
-        transition-colors
+        shadow-lg dark:shadow-[0_8px_25px_rgba(0,0,0,0.7)]
+        hover:scale-[1.02]
+        transition-all duration-300
       "
       >
+
         {/* TOP ROW */}
         <div className="flex items-center justify-between">
 
-          {/* LEFT - DOT + NUMBER */}
-          <div className="flex items-center gap-3">
+          {/* LEFT SIDE - AVATARS + COUNT */}
+          <div className="flex items-center gap-4">
 
-            <div className="relative flex items-center justify-center h-5 w-5">
-              <span className="absolute h-3 w-3 rounded-full bg-green-500 opacity-30 animate-pulse" />
-              <span className="relative h-2.5 w-2.5 rounded-full bg-green-500" />
+            {/* Avatar Stack */}
+            <div className="flex -space-x-3">
+              <img
+                src="https://i.pravatar.cc/40?img=11"
+                className="w-8 h-8 rounded-full border-2 border-white dark:border-[#0f0f0f]"
+                alt="user1"
+              />
+              <img
+                src="https://i.pravatar.cc/40?img=12"
+                className="w-8 h-8 rounded-full border-2 border-white dark:border-[#0f0f0f]"
+                alt="user2"
+              />
+              <img
+                src="https://i.pravatar.cc/40?img=13"
+                className="w-8 h-8 rounded-full border-2 border-white dark:border-[#0f0f0f]"
+                alt="user3"
+              />
             </div>
 
-            <span className="text-sm font-semibold text-slate-900 dark:text-white tabular-nums leading-none">
+            {/* Live Count */}
+            <span className="text-lg font-bold text-slate-900 dark:text-white tabular-nums">
               {displayCount.toLocaleString()}
             </span>
           </div>
 
-          {/* RIGHT - STATUS */}
+          {/* RIGHT SIDE - LIVE STATUS */}
           <div className="flex items-center gap-2">
 
-            <span className="relative flex items-center justify-center h-2.5 w-2.5">
-              <span
-                className={`
-                  absolute h-full w-full rounded-full
-                  ${currentStatus.dot} ${currentStatus.pulse}
-                `}
-              />
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
             </span>
 
-            <span
-              className={`
-                text-sm font-medium leading-none
-                ${currentStatus.textColor}
-              `}
-            >
-              {currentStatus.text}
+            <span className="text-green-500 text-sm font-semibold">
+              Live Now
             </span>
           </div>
         </div>
 
         {/* SUBTEXT */}
-        <div className="mt-1 text-xs text-slate-500 dark:text-gray-500">
-          people online
+        <div className="mt-3 text-sm text-slate-600 dark:text-gray-400">
+          People matching and chatting right now. Join the conversation 🚀
         </div>
 
       </div>
     </div>
   );
+
 };
 
 export default StatBar;
