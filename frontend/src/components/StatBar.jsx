@@ -159,7 +159,7 @@ const StatBar = ({
 
         {/* SUBTEXT */}
         <div className="mt-3 text-sm text-slate-600 dark:text-gray-400">
-          People matching and chatting right now. Join the conversation 🚀
+          People matching and chatting right now. Join the conversation.
         </div>
 
       </div>

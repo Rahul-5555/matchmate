@@ -26,25 +26,29 @@ const HeroSection = ({
 
         <StatBar socket={socket} status={calculatedStatus} />
 
-        <div className="flex flex-col sm:flex-row gap-4 pt-4">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4 w-full">
           <button
             onClick={onStartTextChat}
-            className="px-8 py-3 rounded-lg text-sm font-medium text-white 
-                     bg-indigo-600 hover:bg-indigo-500
-                     transition-all duration-300
-                     shadow-md hover:shadow-xl hover:-translate-y-1"
+            className="w-full sm:w-auto px-8 py-3 rounded-lg text-sm font-medium text-white 
+               bg-indigo-600 hover:bg-indigo-500
+               transition-all duration-300
+               shadow-md hover:shadow-xl hover:-translate-y-1
+               flex items-center justify-center gap-2"
           >
-            💬 Start Text Chat
+            <span>💬</span>
+            <span>Start Text Chat</span>
           </button>
 
           <button
             onClick={onStartVoiceChat}
-            className="px-8 py-3 rounded-lg text-sm font-medium text-white 
-                     bg-indigo-600 hover:bg-indigo-500
-                     transition-all duration-300
-                     shadow-md hover:shadow-xl hover:-translate-y-1"
+            className="w-full sm:w-auto px-8 py-3 rounded-lg text-sm font-medium text-white 
+               bg-indigo-600 hover:bg-indigo-500
+               transition-all duration-300
+               shadow-md hover:shadow-xl hover:-translate-y-1
+               flex items-center justify-center gap-2"
           >
-            🎧 Start Voice Call
+            <span>🎧</span>
+            <span>Start Voice Call</span>
           </button>
         </div>
       </div>

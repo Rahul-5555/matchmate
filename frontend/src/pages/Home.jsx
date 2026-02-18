@@ -1,325 +1,303 @@
-import React, { useRef, useState, useEffect } from "react";
-import { io } from "socket.io-client";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
-import StatBar from "../components/StatBar";
+import useSocket from "../hooks/useSocket";
+import useMatching from "../hooks/useMatching";
+import useSocketEvents from "../hooks/useSocketEvents";
+
+// Components
+import HeaderSection from "../components/LandingPage/HeaderSection";
+import HeroSection from "../components/LandingPage/HeroSection";
+import FeatureCards from "../components/LandingPage/FeatureCards";
+import InterestModal from "../components/InterestModal";
 import Matching from "./Matching";
-import Chat from "../pages/Chat";
-
-// import heroImg from "../assets/heroimg.png";
+import Chat from "./Chat";
 import Header from "../components/Header";
-import ThemeToggle from "../components/ThemeToggle";
-import InterestModal from "../components/InterestModal"; // ✅ NEW
+
+// New engaging components
+import LiveStats from "../components/LandingPage/LiveStats";
+import Testimonials from "../components/LandingPage/Testimonials";
+// import HowItWorks from "../components/LandingPage/HowItWorks";
+// import CTASection from "../components/LandingPage/CTASection";
+import BackgroundAnimation from "../components/LandingPage/BackgroundAnimation";
 
 const Home = () => {
+  // Custom hooks
+  const { socket, socketRef, isConnected } = useSocket();
+  const {
+    stage,
+    mode,
+    matchId,
+    isCaller,
+    audioOn,
+    showInterestModal,
+    selectedInterest,
+    calculatedStatus,
+    setAudioOn,
+    setSelectedInterest,
+    startMatching,
+    confirmMatching,
+    handleMatched,
+    handleEnd,
+    closeModal,
+  } = useMatching(socketRef);
 
-  /* =======================
-     SESSION ID
-  ======================= */
+  // New state for engaging features
+  const [showScrollIndicator, setShowScrollIndicator] = useState(true);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
-  const getSessionId = () => {
-    let id = localStorage.getItem("matchmate_session");
+  // Socket event listeners
+  useSocketEvents(socket, handleMatched);
 
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem("matchmate_session", id);
-    }
-
-    return id;
-  };
-
-  /* =======================
-     STATE
-  ======================= */
-
-  const [stage, setStage] = useState("home");
-  const [mode, setMode] = useState("chat");
-
-  const [matchId, setMatchId] = useState(null);
-  const [isCaller, setIsCaller] = useState(false);
-  const [audioOn, setAudioOn] = useState(false);
-
-  const [socket, setSocket] = useState(null);
-
-  const socketRef = useRef(null);
-  const isMatchingRef = useRef(false);
-
-  // ✅ NEW
-  const [showInterestModal, setShowInterestModal] = useState(false);
-  const [selectedInterest, setSelectedInterest] = useState("global");
-
-  const calculatedStatus =
-    stage === "matching"
-      ? "matching"
-      : stage === "chat"
-        ? "connected"
-        : "idle";
-
-
-  /* =======================
-     SOCKET INIT
-  ======================= */
-
+  // Handle mouse move for parallax effects
   useEffect(() => {
-    const sessionId = getSessionId();
-
-    const s = io(import.meta.env.VITE_SOCKET_URL, {
-      transports: ["websocket"],
-      auth: { sessionId },
-    });
-
-    socketRef.current = s;
-    setSocket(s);
-
-    s.on("connect", () => {
-      console.log("✅ Connected:", s.id);
-    });
-
-    return () => {
-      s.disconnect();
-      socketRef.current = null;
+    const handleMouseMove = (e) => {
+      setMousePosition({
+        x: (e.clientX / window.innerWidth - 0.5) * 20,
+        y: (e.clientY / window.innerHeight - 0.5) * 20,
+      });
     };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
-  /* =======================
-     START MATCHING (OPEN MODAL)
-  ======================= */
+  // Hide scroll indicator after scrolling
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 100) {
+        setShowScrollIndicator(false);
+      }
+    };
 
-  const startMatching = (selectedMode) => {
-    if (!socketRef.current || isMatchingRef.current) return;
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
-    setMode(selectedMode);
-    setShowInterestModal(true);
-  };
-
-  /* =======================
-     CONFIRM MATCHING
-  ======================= */
-
-  const confirmMatching = () => {
-    if (!socketRef.current || isMatchingRef.current) return;
-
-    isMatchingRef.current = true;
-
-    setMatchId(null);
-    setIsCaller(false);
-    setAudioOn(false);
-
-    setStage("matching");
-    setShowInterestModal(false);
-
-    socketRef.current.emit("find_match", {
-      interest: selectedInterest,
-    });
-  };
-
-  /* =======================
-     MATCH FOUND
-  ======================= */
-
-  const handleMatched = ({ matchId, role }) => {
-    if (stage !== "matching") return;
-
-    isMatchingRef.current = false;
-    setMatchId(matchId);
-    setIsCaller(role === "caller");
-
-    if (mode === "audio") setAudioOn(true);
-
-    setStage("chat");
-  };
-
-  /* =======================
-     END CHAT
-  ======================= */
-
-  const handleEnd = () => {
-    setAudioOn(false);
-    setMatchId(null);
-    setIsCaller(false);
-    isMatchingRef.current = false;
-
-    setStage("home");
-  };
-
-  /* =======================
-     CONDITIONAL RENDER
-  ======================= */
-
+  // Conditional renders based on stage
   if (stage === "matching" && socket) {
-    return <Matching socket={socket} onMatched={handleMatched} />;
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <Matching socket={socket} onMatched={handleMatched} />
+      </motion.div>
+    );
   }
 
   if (stage === "chat" && socket && matchId) {
     return (
-      <Chat
-        socket={socket}
-        mode={mode}
-        matchId={matchId}
-        audioOn={audioOn}
-        setAudioOn={setAudioOn}
-        isCaller={isCaller}
-        onEnd={handleEnd}
-        interest={selectedInterest}
-      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.3 }}
+      >
+        <Chat
+          socket={socket}
+          mode={mode}
+          matchId={matchId}
+          audioOn={audioOn}
+          setAudioOn={setAudioOn}
+          isCaller={isCaller}
+          onEnd={handleEnd}
+          interest={selectedInterest}
+        />
+      </motion.div>
     );
   }
 
-  /* =======================
-     LANDING PAGE
-  ======================= */
-
+  // Landing page with engaging design
   return (
-    <>
-      {/* Interest Modal */}
-      <InterestModal
-        isOpen={showInterestModal}
-        selectedInterest={selectedInterest}
-        setSelectedInterest={setSelectedInterest}
-        onClose={() => setShowInterestModal(false)}
-        onConfirm={confirmMatching}
-      />
+    <AnimatePresence mode="wait">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5 }}
+        className="relative overflow-x-hidden"
+      >
+        {/* Background Animation */}
+        <BackgroundAnimation mousePosition={mousePosition} />
 
-      {/* Logo */}
-      <div className="absolute top-6 left-6 z-50">
-        <span className="text-lg font-semibold text-slate-900 dark:text-white">
-          ♟ MatchMate
-        </span>
-      </div>
+        {/* Interest Modal with animation */}
+        <AnimatePresence>
+          {showInterestModal && (
+            <InterestModal
+              isOpen={showInterestModal}
+              selectedInterest={selectedInterest}
+              setSelectedInterest={setSelectedInterest}
+              onClose={closeModal}
+              onConfirm={confirmMatching}
+            />
+          )}
+        </AnimatePresence>
 
-      {/* Theme Toggle */}
-      <div className="absolute top-6 right-6 z-50">
-        <ThemeToggle />
-      </div>
+        {/* Header with enhanced styling */}
+        <HeaderSection />
 
-      <div className="min-h-screen flex flex-col items-center pt-28 px-6 
-                    bg-white dark:bg-slate-950 
-                    text-slate-900 dark:text-white">
-
-        {/* ================= HERO ================= */}
-        <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-
-          <div className="space-y-8 md:pr-8 order-2 md:order-1">
-
-            <h1 className="text-4xl sm:text-5xl font-bold leading-tight tracking-tight">
-              Meet new people.
-              <br />
-              <span className="text-indigo-600 dark:text-indigo-400">
-                Instantly.
-              </span>
-            </h1>
-
-            <p className="text-lg text-slate-600 dark:text-slate-300 max-w-md">
-              Anonymous conversations. Real humans. Zero pressure.
-              Just tap and start talking.
-            </p>
-
-            <StatBar socket={socket} status={calculatedStatus} />
-
-
-            <div className="flex flex-col sm:flex-row gap-4 pt-4">
-
-              <button
-                onClick={() => startMatching("chat")}
-                className="px-8 py-3 rounded-lg text-sm font-medium text-white 
-                         bg-indigo-600 hover:bg-indigo-500
-                         transition-all duration-300
-                         shadow-md hover:shadow-xl hover:-translate-y-1"
-              >
-                💬 Start Text Chat
-              </button>
-
-              <button
-                onClick={() => startMatching("audio")}
-                className="px-8 py-3 rounded-lg text-sm font-medium 
-                         border border-slate-300 dark:border-slate-700
-                         hover:bg-slate-100 dark:hover:bg-slate-800
-                         transition-all duration-300"
-              >
-                🎧 Start Voice Call
-              </button>
-
+        {/* Connection Status Badge */}
+        {!isConnected && (
+          <motion.div
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50"
+          >
+            <div className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-lg flex items-center space-x-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+              <span className="text-sm font-medium">Connecting to server...</span>
             </div>
-          </div>
+          </motion.div>
+        )}
 
-          <div className="flex justify-center order-1 md:order-2">
-            <div className="w-full max-w-md md:max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-              <img
-                alt="hero"
-                src="/Heroimg.png"
-                className="w-full h-auto object-contain"
-              />
-            </div>
-          </div>
+        {/* Main Content with Parallax */}
+        <div
+          className="min-h-screen flex flex-col items-center pt-28 px-6 
+                    bg-gradient-to-b from-transparent via-indigo-50/30 to-transparent
+                    dark:via-indigo-950/20"
+          style={{
+            transform: `translate(${mousePosition.x * 0.5}px, ${mousePosition.y * 0.5}px)`,
+          }}
+        >
+          {/* Hero Section with enhanced animations */}
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.8 }}
+            className="w-full"
+          >
+            <HeroSection
+              socket={socket}
+              calculatedStatus={calculatedStatus}
+              onStartTextChat={() => startMatching("chat")}
+              onStartVoiceChat={() => startMatching("audio")}
+            />
+          </motion.div>
 
+          {/* Live Stats Counter */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="w-full max-w-6xl mt-20"
+          >
+            <LiveStats socket={socket} />
+          </motion.div>
+
+          {/* How It Works Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="w-full max-w-6xl mt-32"
+          >
+            {/* <HowItWorks /> */}
+          </motion.div>
+
+          {/* Feature Cards with staggered animation */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="w-full max-w-6xl mt-32"
+          >
+            <FeatureCards />
+          </motion.div>
+
+          {/* Testimonials Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="w-full max-w-6xl mt-32"
+          >
+            <Testimonials />
+          </motion.div>
+
+          {/* CTA Section */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="w-full max-w-6xl mt-32"
+          >
+            {/* <CTASection
+              onStartTextChat={() => startMatching("chat")}
+              onStartVoiceChat={() => startMatching("audio")}
+            /> */}
+          </motion.div>
+
+          {/* Footer */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="w-full mt-32"
+          >
+            <Header />
+          </motion.div>
         </div>
 
-        {/* ================= TRUST SECTION ================= */}
-        <div className="mt-40 w-full max-w-6xl">
-
-          <div className="text-center mb-16">
-            <h3 className="text-3xl font-bold tracking-tight">
-              Why people love MatchMate
-            </h3>
-            <p className="mt-4 text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
-              Designed for meaningful conversations without pressure.
-              Simple, fast and completely anonymous.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
-
-            {/* Card 1 */}
-            <div className="group p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 text-center">
-              <div className="w-14 h-14 mx-auto flex items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-2xl mb-6">
-                🔒
+        {/* Scroll Indicator */}
+        <AnimatePresence>
+          {showScrollIndicator && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40"
+            >
+              <div className="flex flex-col items-center space-y-2">
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  Scroll to explore
+                </span>
+                <motion.div
+                  animate={{ y: [0, 10, 0] }}
+                  transition={{ repeat: Infinity, duration: 1.5 }}
+                  className="w-6 h-10 border-2 border-indigo-400 dark:border-indigo-500 rounded-full flex justify-center"
+                >
+                  <motion.div
+                    animate={{ y: [0, 12, 0] }}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                    className="w-1.5 h-1.5 bg-indigo-400 dark:bg-indigo-500 rounded-full mt-2"
+                  />
+                </motion.div>
               </div>
-              <h4 className="font-semibold text-lg mb-3">
-                100% Anonymous
-              </h4>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
-                No accounts. No tracking. No saved history.
-                Just honest conversations.
-              </p>
-            </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-            {/* Card 2 */}
-            <div className="group p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 text-center">
-              <div className="w-14 h-14 mx-auto flex items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-2xl mb-6">
-                ⚡
-              </div>
-              <h4 className="font-semibold text-lg mb-3">
-                Instant Matching
-              </h4>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
-                Connect with someone new in seconds.
-                No waiting. No setup.
-              </p>
-            </div>
-
-            {/* Card 3 */}
-            <div className="group p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 text-center">
-              <div className="w-14 h-14 mx-auto flex items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-2xl mb-6">
-                🎧
-              </div>
-              <h4 className="font-semibold text-lg mb-3">
-                Real Conversations
-              </h4>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
-                Choose text or voice.
-                Talk freely and naturally.
-              </p>
-            </div>
-
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-40">
-          <Header />
-        </div>
-
-      </div>
-    </>
+        {/* Floating Action Button for quick matching */}
+        <motion.button
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => startMatching("chat")}
+          className="fixed bottom-8 right-8 z-40 w-14 h-14 bg-indigo-600 hover:bg-indigo-500 
+                     rounded-full shadow-2xl flex items-center justify-center
+                     transition-all duration-300 group"
+        >
+          <span className="text-2xl transform group-hover:rotate-12 transition-transform duration-300">
+            💬
+          </span>
+          <span className="absolute -top-12 right-0 bg-slate-900 dark:bg-white text-white dark:text-slate-900 
+                         text-sm px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 
+                         transition-opacity duration-300 whitespace-nowrap">
+            Quick Match
+          </span>
+        </motion.button>
+      </motion.div>
+    </AnimatePresence>
   );
 };
 
