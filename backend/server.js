@@ -544,7 +544,7 @@ io.on("connection", (socket) => {
       socket.interest = interest;
       userInterests.set(socket.id, interest);
 
-      // 🔥 FIX: Daily limit check - SKIP for premium users
+      // : Daily limit check - SKIP for premium users
       if (!socket.premium) {
         const count = await getMatchCount(socket.sessionId);
         if (count >= DAILY_LIMIT) {
