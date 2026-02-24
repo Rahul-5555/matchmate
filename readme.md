@@ -403,3 +403,137 @@ Generate secure random sessionId server-side.
 
 1️⃣ Keep it fully anonymous forever?
 2️⃣ Add optional lightweight profile layer?
+
+
+
+## 🔥 **CRITICAL ERROR: Redis Connection Failed!**
+
+**Problem:** Server `127.0.0.1:6379` par Redis connect nahi ho raha. Ye **production environment** mein common hai kyunki Redis alag URL par hota hai.
+
+## ✅ **Fix - Redis Connection for Production**
+
+```javascript
+/* =======================
+   REDIS SETUP - FIXED FOR PRODUCTION
+======================= */
+
+const redis = createClient({
+  url: process.env.REDIS_URL || "redis://127.0.0.1:6379",
+  socket: {
+    reconnectStrategy: (retries) => {
+      console.log(`🔄 Redis reconnection attempt ${retries}`);
+      
+      // Agar REDIS_URL set hai to zyada attempts do
+      const maxRetries = process.env.REDIS_URL ? 20 : 10;
+      
+      if (retries > maxRetries) {
+        console.error(`❌ Too many Redis reconnection attempts (${maxRetries})`);
+        return new Error("Redis connection failed");
+      }
+      
+      // Exponential backoff
+      return Math.min(retries * 1000, 10000);
+    },
+    connectTimeout: 10000, // 10 seconds timeout
+    keepAlive: 3000
+  }
+});
+
+redis.on("error", (err) => {
+  console.error("⚠️ Redis Error:", err.message);
+  
+  // Agar production mein Redis nahi hai to bhi server chalne do
+  if (process.env.NODE_ENV === 'production' && process.env.REDIS_URL) {
+    console.log("⚠️ Redis unavailable, running without Redis (limited functionality)");
+  }
+});
+
+redis.on("connect", () => {
+  console.log("✅ Redis Connected");
+});
+
+redis.on("reconnecting", () => {
+  console.log("🔄 Redis Reconnecting...");
+});
+
+try {
+  await redis.connect();
+  console.log("✅ Redis Connected Successfully");
+} catch (err) {
+  console.error("❌ Failed to connect to Redis:", err.message);
+  
+  // Production mein Redis ke bina bhi server chal sakta hai (limited mode)
+  if (process.env.NODE_ENV === 'production') {
+    console.log("⚠️ Continuing without Redis - some features may be limited");
+  } else {
+    process.exit(1);
+  }
+}
+```
+
+## 🚀 **For Render.com Deployment**
+
+### **Option 1: Use Redis Cloud (Recommended)**
+1. Sign up at [Redis Cloud](https://redis.com/try-free/)
+2. Create free database (30MB)
+3. Get connection URL like: `redis://default:password@host:port`
+4. Add to Render environment variables:
+```
+REDIS_URL=redis://default:password@host:port
+```
+
+### **Option 2: Use Redis Labs Free**
+```bash
+# Get free Redis instance from:
+https://app.redislabs.com/
+```
+
+### **Option 3: Disable Redis for Testing**
+Temporary fix - comment out Redis code:
+
+```javascript
+/* =======================
+   REDIS SETUP - DISABLED FOR TESTING
+======================= */
+
+console.log("⚠️ Redis disabled for testing");
+
+// Mock Redis functions
+const redis = {
+  lPush: async () => 1,
+  lRem: async () => 1,
+  lLen: async () => 0,
+  lRange: async () => [],
+  keys: async () => [],
+  hSet: async () => 'OK',
+  expire: async () => true,
+  incr: async () => 1,
+  get: async () => '0',
+  sAdd: async () => 1,
+  sIsMember: async () => 0,
+  ping: async () => 'PONG',
+  quit: async () => 'OK'
+};
+
+console.log("✅ Redis Mock Mode Active");
+```
+
+## 📝 **Environment Variables for Render**
+
+In Render dashboard, add:
+
+```
+REDIS_URL=redis://default:password@host:port
+NODE_ENV=production
+PORT=5000
+```
+
+## ✅ **Quick Production Fix**
+
+Create `.env` file in production:
+
+```bash
+REDIS_URL=redis://your-redis-instance:6379
+```
+
+**Ya phir chahte ho main Redis cloud setup mein help karun?** 🚀

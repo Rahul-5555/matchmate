@@ -19,12 +19,15 @@ const useMatching = (socketRef) => {
 
   const startMatching = useCallback((selectedMode) => {
     if (!socketRef.current || isMatchingRef.current) return;
+    console.log("🎯 startMatching called with mode:", selectedMode);
     setMode(selectedMode);
     setShowInterestModal(true);
   }, [socketRef]);
 
   const confirmMatching = useCallback(() => {
     if (!socketRef.current || isMatchingRef.current) return;
+
+    console.log("🔍 confirmMatching called with mode:", mode, "interest:", selectedInterest);
 
     isMatchingRef.current = true;
     setMatchId(null);
@@ -33,24 +36,39 @@ const useMatching = (socketRef) => {
     setStage("matching");
     setShowInterestModal(false);
 
+    // 🔥 FIX 1: Send mode to server!
     socketRef.current.emit("find_match", {
       interest: selectedInterest,
+      mode: mode // 👈 CRITICAL: Send mode to server
     });
-  }, [socketRef, selectedInterest]);
+  }, [socketRef, selectedInterest, mode]);
 
-  const handleMatched = useCallback(({ matchId, role }) => {
+  // 🔥 FIX 2: Receive mode from server
+  const handleMatched = useCallback(({ matchId, role, mode: receivedMode }) => {
     if (stage !== "matching") return;
+
+    console.log("🎯 handleMatched called with:", { matchId, role, receivedMode });
 
     isMatchingRef.current = false;
     setMatchId(matchId);
     setIsCaller(role === "caller");
 
-    if (mode === "audio") setAudioOn(true);
+    // 🔥 CRITICAL: Use received mode if available, otherwise fallback to current mode
+    const finalMode = receivedMode || mode;
+    setMode(finalMode);
+
+    if (finalMode === "audio") {
+      setAudioOn(true);
+      console.log("🎧 Setting audioOn = true for mode:", finalMode);
+    } else {
+      setAudioOn(false);
+    }
 
     setStage("chat");
   }, [stage, mode]);
 
   const handleEnd = useCallback(() => {
+    console.log("👋 handleEnd called");
     setAudioOn(false);
     setMatchId(null);
     setIsCaller(false);

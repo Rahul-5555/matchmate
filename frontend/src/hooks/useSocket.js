@@ -8,13 +8,17 @@ const useSocket = () => {
   const reconnectAttempts = useRef(0);
   const mountedRef = useRef(true);
 
+  // 🔥 FIX: PERMANENT session ID - kabhi change nahi hoga
   const getSessionId = useCallback(() => {
-    let id = localStorage.getItem("matchmate_session");
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem("matchmate_session", id);
+    let sessionId = localStorage.getItem("matchmate_permanent_session");
+
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      localStorage.setItem("matchmate_permanent_session", sessionId);
+      console.log("🆕 New permanent session created:", sessionId);
     }
-    return id;
+
+    return sessionId;
   }, []);
 
   useEffect(() => {
@@ -23,11 +27,10 @@ const useSocket = () => {
     const initializeSocket = () => {
       if (!mountedRef.current) return;
 
-      const sessionId = getSessionId();
+      const sessionId = getSessionId(); // 👈 Permanent session ID
 
       console.log("🔌 Initializing socket connection...", { sessionId });
 
-      // Agar already socket hai to pehle cleanup karo
       if (socketRef.current) {
         socketRef.current.removeAllListeners();
         socketRef.current.disconnect();
@@ -35,7 +38,7 @@ const useSocket = () => {
       }
 
       const s = io(import.meta.env.VITE_SOCKET_URL, {
-        transports: ["websocket"],
+        transports: ["websocket", "polling"], // polling as fallback
         auth: { sessionId },
         reconnection: true,
         reconnectionAttempts: 5,
@@ -52,6 +55,16 @@ const useSocket = () => {
         console.log("✅ Connected:", s.id);
         setIsConnected(true);
         reconnectAttempts.current = 0;
+
+        // 🔥 FIX: Jab bhi connect ho, premium check karo
+        const token = localStorage.getItem('premium_token');
+        if (token) {
+          console.log("🔍 Verifying premium token with server...");
+          s.emit('verify_premium', { token, sessionId });
+        } else {
+          // Sirf session se check karo
+          s.emit('check_premium_by_session', { sessionId });
+        }
       });
 
       s.on("disconnect", (reason) => {
@@ -59,7 +72,6 @@ const useSocket = () => {
         console.log("❌ Disconnected:", reason);
         setIsConnected(false);
 
-        // Agar server ne disconnect kiya to reconnect try karo
         if (reason === "io server disconnect") {
           setTimeout(() => {
             if (mountedRef.current && socketRef.current) {
@@ -84,12 +96,26 @@ const useSocket = () => {
         console.log(`🔄 Reconnect attempt ${attempt}`);
       });
 
+      // 🔥 FIX: Premium verification response
+      s.on("premium_verified", ({ expiresAt, restoredToken }) => {
+        console.log("✨ Premium verified/restored from server!");
+        if (restoredToken) {
+          localStorage.setItem('premium_token', restoredToken);
+        }
+        localStorage.setItem('premium_until', expiresAt.toString());
+      });
+
+      s.on("premium_invalid", () => {
+        console.log("⚠️ No premium found for this session");
+        localStorage.removeItem('premium_token');
+        localStorage.removeItem('premium_until');
+      });
+
       if (mountedRef.current) {
         setSocket(s);
       }
     };
 
-    // Small delay to ensure clean mount
     const timer = setTimeout(initializeSocket, 100);
 
     return () => {

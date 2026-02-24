@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-const Matching = ({ socket, onMatched }) => {
+const Matching = ({ socket, onMatched, hasPremium = false }) => { // 👈 ADD hasPremium prop
   const matchedRef = useRef(false);
   const [limitReached, setLimitReached] = useState(false);
 
@@ -39,7 +39,7 @@ const Matching = ({ socket, onMatched }) => {
     return () => clearInterval(interval);
   }, []);
 
-  /* 🔌 Socket listeners */
+  /* 🔌 Socket listeners - FIXED */
   useEffect(() => {
     if (!socket) return;
 
@@ -47,15 +47,22 @@ const Matching = ({ socket, onMatched }) => {
       if (!data?.matchId || !data?.role) return;
       if (matchedRef.current) return;
 
+      console.log("🎯 Match found in Matching:", data);
       matchedRef.current = true;
 
       onMatched({
         matchId: data.matchId,
         role: data.role,
+        mode: data.mode || localStorage.getItem('selectedMode') || 'chat'
       });
     };
 
     const handleLimit = () => {
+      // 🔥 FIX: Agar premium hai to limit ignore karo
+      if (hasPremium) {
+        console.log("✨ Premium user - ignoring limit");
+        return;
+      }
       setLimitReached(true);
     };
 
@@ -66,13 +73,13 @@ const Matching = ({ socket, onMatched }) => {
       socket.off("match_found", handleMatchFound);
       socket.off("limit_reached", handleLimit);
     };
-  }, [socket, onMatched]);
+  }, [socket, onMatched, hasPremium]);
 
   /* =======================
-     LIMIT SCREEN
+     LIMIT SCREEN - Sirf non-premium users ke liye
   ======================= */
 
-  if (limitReached) {
+  if (limitReached && !hasPremium) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black to-slate-900 text-white px-4">
         <div className="bg-white/5 backdrop-blur-xl p-8 rounded-2xl text-center max-w-sm shadow-xl animate-fadeIn">

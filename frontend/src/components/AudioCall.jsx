@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 
 const CALL_DURATION = 10 * 60; // 10 minutes
 const WARNING_TIME = 60; // 1 minute warning
@@ -324,45 +325,48 @@ const AudioCall = ({ webrtc, onEnd }) => {
   }, []);
 
   return (
-    <div className="w-full">
+    <div className="w-full bg-slate-900 rounded-2xl p-6 text-white">
+      {/* Audio Elements */}
       <audio ref={localAudioRef} autoPlay playsInline />
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      <canvas
-        ref={canvasRef}
-        className="w-full h-20 rounded-lg bg-black/20 mb-4"
-      />
+      {/* Simple Visualizer */}
+      <div className="mb-4">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-16 rounded-lg bg-slate-800"
+        />
+      </div>
 
       <div className="space-y-4">
-        {/* HEADER */}
+        {/* Header - Simple Status */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-            </span>
-            <span className="text-sm">
+            <span className={`w-2 h-2 rounded-full ${connectionState === "connected" ? "bg-green-500" : "bg-yellow-500"
+              }`} />
+            <span className="text-sm text-slate-300">
               {connectionState === "connected" ? "Connected" : connectionState}
-              {isSwitchingDevice && " (Switching...)"}
+              {isSwitchingDevice && " • Switching..."}
             </span>
           </div>
 
-          <div className={`text-sm font-mono ${getTimerColor()}`}>
+          {/* Simple Timer */}
+          <span className={`text-sm font-mono ${isCritical ? "text-red-400" : "text-slate-400"
+            }`}>
             {formatTime(timeLeft)}
-            {isCritical && <span className="ml-2 text-xs">⚠️</span>}
-          </div>
+          </span>
         </div>
 
-        {/* VOICE VISUALIZER */}
-        <div className="flex justify-center items-end gap-1 h-12">
+        {/* Simple Voice Indicator */}
+        <div className="flex justify-center items-end gap-0.5 h-12">
           {[...Array(20)].map((_, i) => {
             const level = Math.min(1, (audioLevel || 0) / 50);
-            const height = Math.max(4, level * 40);
+            const height = Math.max(4, level * 36);
 
             return (
               <div
                 key={i}
-                className="w-2 bg-gradient-to-t from-indigo-500 to-purple-500 rounded-full transition-all duration-100"
+                className="w-1.5 bg-indigo-500 rounded-full transition-all duration-75"
                 style={{
                   height: `${height}px`,
                   opacity: isMuted ? 0.2 : 0.5 + level * 0.5
@@ -372,45 +376,46 @@ const AudioCall = ({ webrtc, onEnd }) => {
           })}
         </div>
 
-        {/* DEVICE SELECTOR */}
-        {showControls && audioDevices.length > 1 && (
-          <div className="mt-2">
+        {/* Device Selector - Simple */}
+        {audioDevices.length > 1 && (
+          <div className="space-y-1">
             <select
               value={selectedDevice || ''}
               onChange={(e) => changeAudioDevice(e.target.value)}
               disabled={isSwitchingDevice}
-              className={`w-full px-3 py-2 bg-white/10 rounded-lg text-sm border ${isSwitchingDevice ? 'border-yellow-500/50 opacity-50' : 'border-white/20'
-                }`}
+              className="w-full px-3 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700"
             >
               {audioDevices.map(device => (
-                <option key={device.deviceId} value={device.deviceId} className="bg-slate-800">
-                  🎤 {device.label || `Mic ${device.deviceId.slice(0, 4)}`}
+                <option key={device.deviceId} value={device.deviceId}>
+                  🎤 {device.label || `Microphone ${device.deviceId.slice(0, 4)}`}
                 </option>
               ))}
             </select>
             {isSwitchingDevice && (
-              <p className="text-xs text-yellow-400 text-center mt-1">
+              <p className="text-xs text-yellow-500 text-center">
                 Switching device...
               </p>
             )}
           </div>
         )}
 
-        {/* STATUS MESSAGE */}
-        <p className="text-center text-xs text-white/40">
-          {!isMicReady ? "⏳ Initializing microphone..." :
-            isSwitchingDevice ? "🔄 Switching microphone..." :
-              isMuted ? "🔇 You're muted" :
-                "🎤 Speak clearly"}
+        {/* Status Message - Simple */}
+        <p className="text-center text-xs text-slate-400">
+          {!isMicReady ? "Initializing microphone..." :
+            isMuted ? "You're muted" :
+              "Speak clearly"}
         </p>
 
-        {/* CONTROLS */}
-        <div className={`flex justify-center gap-2 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-40'}`}>
+        {/* Control Buttons - Simple */}
+        <div className="flex justify-center gap-3">
           <button
             onClick={toggleMute}
             disabled={isSwitchingDevice}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${isMuted ? "bg-yellow-500 text-black" : "bg-white/10 hover:bg-white/20"
-              } ${isSwitchingDevice ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`px-5 py-2 rounded-lg text-sm font-medium transition
+            ${isMuted
+                ? 'bg-yellow-600 hover:bg-yellow-700'
+                : 'bg-indigo-600 hover:bg-indigo-700'
+              } disabled:opacity-50`}
           >
             {isMuted ? "Unmute" : "Mute"}
           </button>
@@ -418,16 +423,17 @@ const AudioCall = ({ webrtc, onEnd }) => {
           <button
             onClick={() => handleEnd("user-ended")}
             disabled={isSwitchingDevice}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 hover:bg-red-600 transition disabled:opacity-50"
+            className="px-5 py-2 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-700 disabled:opacity-50"
           >
             End Call
           </button>
         </div>
 
+        {/* Simple Hint */}
         {!showControls && (
-          <div className="text-center text-[10px] text-white/30">
+          <p className="text-center text-[10px] text-slate-500">
             Tap to show controls
-          </div>
+          </p>
         )}
       </div>
     </div>
