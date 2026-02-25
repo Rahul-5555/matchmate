@@ -6,6 +6,7 @@ import useMatching from "../hooks/useMatching";
 import useSocketEvents from "../hooks/useSocketEvents";
 import { useGenderFilter } from "../hooks/useGenderFilter";
 import { usePayment } from "../hooks/usePayment";
+import { useToastContext } from "../App"; // 👈 NEW
 
 // Components
 import HeaderSection from "../components/LandingPage/HeaderSection";
@@ -27,6 +28,9 @@ import BackgroundAnimation from "../components/LandingPage/BackgroundAnimation";
 import { DEFAULT_USER_PREFERENCE } from "../utils/constants";
 
 const Home = () => {
+  // 👇 NEW: Toast context
+  const { showToast } = useToastContext();
+
   // Custom hooks
   const { socket, socketRef, isConnected } = useSocket();
   const {
@@ -109,6 +113,9 @@ const Home = () => {
     setSelectedLanguage(lang);
     setShowLanguageSelector(false);
     setShowGenderSelector(true);
+
+    // 👇 NEW: Toast notification
+    showToast(`Language set to ${lang === 'hi' ? 'हिन्दी' : lang === 'en' ? 'English' : 'Hinglish'}`, 'success', 2000);
   };
 
   // Handle gender selection
@@ -122,6 +129,7 @@ const Home = () => {
 
     if (isPaid) {
       console.log("💳 Payment successful, premium activated");
+      showToast("✨ Premium activated for 24 hours!", "success");
     }
 
     startMatching(selectedMode);
@@ -130,14 +138,27 @@ const Home = () => {
   // Handle payment success
   const handlePaymentSuccess = (data) => {
     activatePremium(data.token, data.expiresAt);
+    showToast("✅ Payment successful! Premium activated.", "success");
   };
 
   // Handle confirm matching with gender filter
   const handleConfirmMatching = () => {
-    if (preference.lookingFor !== 'both' && socket) {
-      findMatchWithGender(selectedInterest, mode);
+    try {
+      if (preference.lookingFor !== 'both' && socket) {
+        findMatchWithGender(selectedInterest, mode);
+      }
+      confirmMatching();
+      showToast("🔍 Finding your match...", "info", 2000);
+    } catch (error) {
+      console.error("❌ Matching error:", error);
+      showToast("Something went wrong. Please try again.", "error");
     }
-    confirmMatching();
+  };
+
+  // Handle matched
+  const handleMatchedWithToast = (data) => {
+    handleMatched(data);
+    showToast("✅ Match found! Connecting...", "success", 2000);
   };
 
   // Conditional renders
@@ -151,7 +172,7 @@ const Home = () => {
       >
         <Matching
           socket={socket}
-          onMatched={handleMatched}
+          onMatched={handleMatchedWithToast}
           hasPremium={hasPremium}
           genderFilter={preference.lookingFor !== 'both' ? preference : null}
         />
@@ -282,13 +303,13 @@ const Home = () => {
           <motion.div
             initial={{ y: -100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="absolute top-17 right-4 z-50"
+            className="absolute top-20 right-4 z-50"
           >
-            <div className="bg-green-500 text-white px-1 py-1.5 rounded-full shadow-lg 
-                          flex items-center gap-1.5 border border-green-300">
+            <div className="bg-green-500 text-white px-2 py-1 rounded-full shadow-lg 
+                          flex items-center gap-1 border border-green-300">
               <span className="text-xs">✨</span>
               <span className="text-xs font-medium">Premium</span>
-              <span className="text-[10px] bg-white/30 px-1.5 py-0.5 rounded-full">
+              <span className="text-[10px] bg-white/30 px-1 py-0.5 rounded-full">
                 {timeLeft.hours}h {timeLeft.minutes}m
               </span>
             </div>
