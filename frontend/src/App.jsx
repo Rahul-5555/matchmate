@@ -1,11 +1,21 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { FullPageLoader } from "./components/LoadingSpinner";
+import Toast from "./components/Toast";
+import { useToast } from "./hooks/useToast";
 
 import Home from "./pages/Home.jsx";
 import CallPage from "./pages/CallPage.jsx";
 
-function App() {
+// Create Toast Context
+import { createContext, useContext } from "react";
+const ToastContext = createContext();
+export const useToastContext = () => useContext(ToastContext);
+
+function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
+  const { toast, showToast, hideToast } = useToast();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -54,12 +64,30 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/call" element={<CallPage />} />
-      </Routes>
-    </BrowserRouter>
+    <ToastContext.Provider value={{ showToast }}>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          duration={toast.duration}
+          onClose={hideToast}
+        />
+      )}
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/call" element={<CallPage />} />
+        </Routes>
+      </BrowserRouter>
+    </ToastContext.Provider>
+  );
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
   );
 }
 
