@@ -87,7 +87,7 @@ const LiveStats = ({ socket }) => {
 
   return (
     <div className="py-8">
-      <h3 className="text-xl font-semibold text-center mb-8 text-slate-900 dark:text-white">
+      <h3 className="text-xl font-semibold text-center mb-8 text-gray-900 dark:text-white">
         Live Community Stats
       </h3>
 
@@ -95,7 +95,9 @@ const LiveStats = ({ socket }) => {
         {statItems.map((item) => (
           <div
             key={item.label}
-            className={`${item.bg} rounded-xl p-4 text-center relative overflow-hidden`}
+            className={`${item.bg} rounded-xl p-4 text-center relative overflow-hidden
+                     border border-gray-200 dark:border-gray-800
+                     shadow-sm dark:shadow-none`}
           >
             {/* Icon */}
             <div className={`text-2xl mb-2 ${item.color}`}>
@@ -108,7 +110,7 @@ const LiveStats = ({ socket }) => {
             </div>
 
             {/* Label */}
-            <div className="text-xs text-slate-500 dark:text-slate-400">
+            <div className="text-xs text-gray-600 dark:text-gray-400">
               {item.label}
             </div>
 
@@ -126,7 +128,7 @@ const LiveStats = ({ socket }) => {
       </div>
 
       {/* Last updated timestamp */}
-      <div className="text-center mt-4 text-xs text-slate-400">
+      <div className="text-center mt-4 text-xs text-gray-500 dark:text-gray-500">
         Live • Updated in real-time
       </div>
     </div>

@@ -182,12 +182,32 @@ const userSessionMap = new Map(); // sessionId -> socketId
 const userModes = new Map(); // socketId -> mode (audio/chat)
 
 /* =======================
-   STATS VARIABLES
+   STATS VARIABLES - WITH REDIS PERSISTENCE
 ======================= */
 
 let activeUsers = 0;
 let totalMatches = 0;
 let messagesSent = 0;
+
+// Load initial stats from Redis
+const loadStatsFromRedis = async () => {
+  try {
+    if (redisConnected && redis) {
+      const savedTotalMatches = await redis.get('stats:total_matches');
+      const savedMessagesSent = await redis.get('stats:messages_sent');
+
+      totalMatches = savedTotalMatches ? parseInt(savedTotalMatches) : 0;
+      messagesSent = savedMessagesSent ? parseInt(savedMessagesSent) : 0;
+
+      console.log(`📊 Stats loaded from Redis: ${totalMatches} matches, ${messagesSent} messages`);
+    }
+  } catch (err) {
+    console.error('❌ Error loading stats from Redis:', err);
+  }
+};
+
+// Call this when server starts
+loadStatsFromRedis();
 
 // Broadcast stats every 5 seconds
 setInterval(() => {
@@ -200,21 +220,41 @@ setInterval(() => {
 }, 5000);
 
 /* =======================
+   STATS UPDATE FUNCTIONS
+======================= */
+
+const incrementTotalMatches = async () => {
+  totalMatches++;
+  if (redisConnected && redis) {
+    await redis.set('stats:total_matches', totalMatches);
+    console.log(`📈 Total matches updated in Redis: ${totalMatches}`);
+  }
+};
+
+const incrementMessagesSent = async () => {
+  messagesSent++;
+  if (redisConnected && redis) {
+    await redis.set('stats:messages_sent', messagesSent);
+  }
+};
+
+/* =======================
    REDIS HELPERS (with fallback)
 ======================= */
 
 const queueKey = (interest) => `match:queue:${interest || "global"}`;
 
 const addToQueue = async (socketId, interest) => {
-  const key = queueKey(interest);
-  await redis.lPush(key, socketId);
-  // 🔥 CRITICAL: Add this log
-  console.log(`📥 Added to queue ${interest}: ${socketId}`);
+  if (redisConnected && redis) {
+    const key = queueKey(interest);
+    await redis.lPush(key, socketId);
+    console.log(`📥 Added to queue ${interest}: ${socketId}`);
 
-  // Get queue length for stats
-  const queueLength = await redis.lLen(key);
-  console.log(`📊 Queue ${interest} now has ${queueLength} users`);
+    const queueLength = await redis.lLen(key);
+    console.log(`📊 Queue ${interest} now has ${queueLength} users`);
+  }
 };
+
 const removeFromQueue = async (socketId) => {
   if (redisConnected && redis) {
     const keys = await redis.keys("match:queue:*");
@@ -267,10 +307,14 @@ const isRecentlyMatched = async (session1, session2) => {
 
 const tryMatch = async (interest) => {
   try {
+    if (!redisConnected || !redis) {
+      console.log("⚠️ Redis not connected, skipping match");
+      return;
+    }
+
     const key = queueKey(interest);
     let queueLength = await redis.lLen(key);
 
-    // 🔥 CRITICAL: Add this log
     console.log(`📊 Queue ${interest}: ${queueLength} users`);
 
     if (queueLength < 2) {
@@ -286,7 +330,6 @@ const tryMatch = async (interest) => {
       if (socket && !userPairs.has(userId)) {
         validUsers.push(userId);
       } else {
-        // Remove invalid user from queue
         await redis.lRem(key, 1, userId);
         console.log(`🗑️ Removed invalid user ${userId} from queue`);
       }
@@ -299,7 +342,6 @@ const tryMatch = async (interest) => {
       return;
     }
 
-    // Shuffle for fairness
     for (let i = validUsers.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [validUsers[i], validUsers[j]] = [validUsers[j], validUsers[i]];
@@ -320,7 +362,6 @@ const tryMatch = async (interest) => {
           continue;
         }
 
-        // Check if recently matched
         const blocked = await isRecentlyMatched(
           socket1.sessionId,
           socket2.sessionId
@@ -329,7 +370,6 @@ const tryMatch = async (interest) => {
         if (!blocked) {
           console.log(`✅ Match found: ${user1} <-> ${user2}`);
 
-          // Remove matched users from queue
           await redis.lRem(key, 1, user1);
           await redis.lRem(key, 1, user2);
 
@@ -376,7 +416,6 @@ const createMatch = async (user1, user2, interest, mode) => {
     userSessionMap.set(socket1.sessionId, user1);
     userSessionMap.set(socket2.sessionId, user2);
 
-    // Emit match_found with mode
     socket1.emit("match_found", {
       matchId,
       role: "caller",
@@ -410,16 +449,15 @@ const createMatch = async (user1, user2, interest, mode) => {
 
     matchTimers.set(matchId, timer);
 
-    // Update stats
-    totalMatches++;
+    // 🔥 FIX: Use persistent stats function
+    await incrementTotalMatches();
+
     if (redisConnected && redis) {
-      await redis.incr("stats:total_matches");
       await storeRecentMatch(socket1.sessionId, socket2.sessionId);
       await incrementMatchCount(socket1.sessionId);
       await incrementMatchCount(socket2.sessionId);
     }
 
-    // Broadcast updated stats
     io.emit("total_matches", totalMatches);
     io.emit("stats_update", {
       activeUsers,
@@ -509,7 +547,6 @@ io.on("connection", (socket) => {
   console.log(`🟢 CONNECT: ${socket.id}, Session: ${sessionId.substring(0, 8)}...`);
   console.log(`👥 Online users: ${onlineUsers.size}`);
 
-  // Send initial stats
   socket.emit("stats_update", {
     activeUsers,
     totalMatches,
@@ -524,13 +561,10 @@ io.on("connection", (socket) => {
     io.emit("active_users", activeUsers);
   }, 100);
 
-  // Setup premium handler if redis available
   if (redisConnected && redis) {
     setupPremiumHandler(io, socket, redis);
   }
 
-  /* ---------- FIND MATCH ---------- */
-  // In io.on("connection", ...) section
   socket.on("find_match", async (data) => {
     try {
       if (!socket.connected) return;
@@ -544,7 +578,6 @@ io.on("connection", (socket) => {
       socket.interest = interest;
       userInterests.set(socket.id, interest);
 
-      // : Daily limit check - SKIP for premium users
       if (!socket.premium) {
         const count = await getMatchCount(socket.sessionId);
         if (count >= DAILY_LIMIT) {
@@ -559,15 +592,12 @@ io.on("connection", (socket) => {
         console.log(`✨ Premium user - unlimited matches: ${socket.sessionId}`);
       }
 
-      // 🔥 CRITICAL: Add to queue FIRST
       console.log(`📥 Adding ${socket.id} to queue ${interest}`);
       await addToQueue(socket.id, interest);
 
-      // 🔥 CRITICAL: Then try to match
       console.log(`🔄 Trying to match in ${interest} queue`);
       await tryMatch(interest);
 
-      // Also check global queue after delay if not matched
       if (interest !== "global") {
         setTimeout(async () => {
           if (socket.connected && !userPairs.has(socket.id)) {
@@ -582,7 +612,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  /* ---------- SKIP ---------- */
   socket.on("skip", async () => {
     try {
       if (!socket.connected) return;
@@ -608,12 +637,12 @@ io.on("connection", (socket) => {
     }
   });
 
-  /* ---------- CHAT ---------- */
-  socket.on("send_message", (msg) => {
+  socket.on("send_message", async (msg) => {
     if (!msg || !socket.connected) return;
 
-    // Update stats
-    messagesSent++;
+    // 🔥 FIX: Use persistent stats function
+    await incrementMessagesSent();
+
     io.emit("messages_sent", messagesSent);
     io.emit("stats_update", {
       activeUsers,
@@ -642,7 +671,6 @@ io.on("connection", (socket) => {
     if (partnerId) io.to(partnerId).emit("partner_stop_typing");
   });
 
-  /* ---------- WEBRTC SIGNALING ---------- */
   socket.on("offer", ({ matchId, offer }) => {
     const room = userRooms.get(socket.id);
     if (room === matchId) {
@@ -664,7 +692,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  /* ---------- CALL ENDED ---------- */
   socket.on("call-ended", async ({ matchId, reason }) => {
     const room = userRooms.get(socket.id);
     if (room === matchId) {
@@ -672,7 +699,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  /* ---------- REQUEST STATS ---------- */
   socket.on("request_stats", () => {
     socket.emit("stats_update", {
       activeUsers,
@@ -682,7 +708,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  /* ---------- DISCONNECT ---------- */
   socket.on("disconnect", async (reason) => {
     console.log(`🔴 DISCONNECT: ${socket.id}, Reason: ${reason}`);
 
@@ -724,9 +749,14 @@ const gracefulShutdown = async () => {
   console.log("\n🛑 Shutting down gracefully...");
   io.emit("server_shutdown", { message: "Server is restarting" });
   await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // Save final stats to Redis
   if (redisConnected && redis) {
+    await redis.set('stats:total_matches', totalMatches);
+    await redis.set('stats:messages_sent', messagesSent);
     await redis.quit();
   }
+
   server.close(() => {
     console.log("✅ Server closed");
     process.exit(0);

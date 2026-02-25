@@ -1,15 +1,32 @@
 @import "tailwindcss";
 
 * {
-  /* margin: 0; */
-  /* padding: 0; */
   box-sizing: border-box;
 }
 
 body {
+  /* 🔥 Updated with Inter font */
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   background: #0f172a;
   color: #e5e7eb;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Better text rendering for chat */
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-rendering: optimizeLegibility;
 }
 
 .loader {
@@ -26,4 +43,23 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Optional: Custom Inter styles for chat */
+.chat-message {
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.011em;
+}
+
+.timestamp {
+  font-weight: 300;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  letter-spacing: -0.006em;
+}
+
+.username {
+  font-weight: 500;
+  letter-spacing: -0.011em;
 }

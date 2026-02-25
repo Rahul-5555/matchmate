@@ -211,7 +211,7 @@ const Home = () => {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.5 }}
-        className="relative overflow-x-hidden"
+        className="relative overflow-x-hidden bg-white dark:bg-gray-950"
       >
         {/* Background Animation */}
         <BackgroundAnimation mousePosition={mousePosition} />
@@ -225,7 +225,7 @@ const Home = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[65] 
-                         flex items-center justify-center p-4"
+                       flex items-center justify-center p-4"
             >
               <motion.div
                 initial={{ scale: 0.9, y: 20 }}
@@ -248,7 +248,7 @@ const Home = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] 
-                         flex items-center justify-center p-4"
+                       flex items-center justify-center p-4"
               onClick={() => setShowGenderSelector(false)}
             >
               <motion.div
@@ -290,8 +290,8 @@ const Home = () => {
             animate={{ y: 0, opacity: 1 }}
             className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50"
           >
-            <div className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-lg 
-                          flex items-center gap-2">
+            <div className="bg-amber-500 text-white px-6 py-2 rounded-full shadow-lg 
+                        flex items-center gap-2 shadow-amber-500/20">
               <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
               <span className="text-sm font-medium">Connecting to server...</span>
             </div>
@@ -303,13 +303,13 @@ const Home = () => {
           <motion.div
             initial={{ y: -100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="absolute top-20 right-4 z-50"
+            className="absolute top-17 right-4 z-50"
           >
-            <div className="bg-green-500 text-white px-2 py-1 rounded-full shadow-lg 
-                          flex items-center gap-1 border border-green-300">
-              <span className="text-xs">✨</span>
-              <span className="text-xs font-medium">Premium</span>
-              <span className="text-[10px] bg-white/30 px-1 py-0.5 rounded-full">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-1 py-1.5 rounded-full shadow-lg 
+                        flex items-center gap-1.5 border border-green-300 shadow-green-500/20">
+              <span className="text-sm animate-pulse">✨</span>
+              <span className="text-sm font-medium">Premium</span>
+              <span className="text-[10px] bg-white/30 px-1.5 py-0.5 rounded-full">
                 {timeLeft.hours}h {timeLeft.minutes}m
               </span>
             </div>
@@ -323,27 +323,20 @@ const Home = () => {
             animate={{ y: 0, opacity: 1 }}
             className="fixed top-32 left-1/2 transform -translate-x-1/2 z-50"
           >
-            <div className="bg-red-500 text-white px-6 py-2 rounded-full shadow-lg">
+            <div className="bg-red-500 text-white px-6 py-2 rounded-full shadow-lg shadow-red-500/20">
               {genderError}
             </div>
           </motion.div>
         )}
 
-        {/* Main Content */}
-        <div
-          className="min-h-screen flex flex-col items-center pt-28 px-6 
-                    bg-gradient-to-b from-transparent via-indigo-50/30 to-transparent
-                    dark:via-indigo-950/20"
-          style={{
-            transform: `translate(${mousePosition.x * 0.5}px, ${mousePosition.y * 0.5}px)`,
-          }}
-        >
+        {/* 🔥 FIXED: Removed parallax completely */}
+        <div className="min-h-screen flex flex-col items-center pt-28 px-4 sm:px-6">
           {/* Hero Section - PRIMARY CTA */}
           <motion.div
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.8 }}
-            className="w-full"
+            className="w-full max-w-6xl"
           >
             <HeroSection
               socket={socket}
@@ -359,7 +352,7 @@ const Home = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6 }}
-            className="w-full max-w-6xl mt-16"
+            className="w-full max-w-6xl mt-20"
           >
             <LiveStats socket={socket} />
           </motion.div>
@@ -370,7 +363,7 @@ const Home = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6 }}
-            className="w-full max-w-6xl mt-24"
+            className="w-full max-w-6xl mt-32"
           >
             <FeatureCards />
           </motion.div>
@@ -381,7 +374,7 @@ const Home = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6 }}
-            className="w-full max-w-6xl mt-24"
+            className="w-full max-w-6xl mt-32"
           >
             <Testimonials />
           </motion.div>
@@ -392,7 +385,7 @@ const Home = () => {
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="w-full mt-24"
+            className="w-full mt-32"
           >
             <Header />
           </motion.div>
@@ -408,11 +401,11 @@ const Home = () => {
               className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40"
             >
               <div className="flex flex-col items-center gap-2">
-                <span className="text-xs text-slate-400">Scroll to explore</span>
-                <div className="w-5 h-8 border-2 border-indigo-300 
-                              rounded-full flex justify-center">
-                  <div className="w-1 h-2 bg-indigo-400 rounded-full 
-                                animate-bounce mt-2" />
+                <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">Scroll to explore</span>
+                <div className="w-6 h-10 border-2 border-indigo-400 dark:border-indigo-600 
+                            rounded-full flex justify-center bg-white/30 dark:bg-black/30 backdrop-blur-sm">
+                  <div className="w-1.5 h-2 bg-indigo-600 dark:bg-indigo-400 rounded-full 
+                              animate-bounce mt-2" />
                 </div>
               </div>
             </motion.div>
@@ -425,9 +418,10 @@ const Home = () => {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => handleStartMatching("chat")}
-            className="w-14 h-14 bg-indigo-600 rounded-full shadow-2xl
-                       flex items-center justify-center text-white text-2xl
-                       hover:bg-indigo-500 transition-colors"
+            className="w-14 h-14 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full shadow-2xl
+                     flex items-center justify-center text-white text-2xl
+                     hover:from-indigo-500 hover:to-purple-500 transition-all
+                     shadow-indigo-600/30"
           >
             💬
           </motion.button>
@@ -435,6 +429,7 @@ const Home = () => {
       </motion.div>
     </AnimatePresence>
   );
+
 };
 
 export default Home;
