@@ -1,20 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
-// Optimized ICE servers
+/* ================= ICE ================= */
+
 const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" },
     {
       urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
       username: "openrelayproject",
       credential: "openrelayproject",
     },
@@ -22,12 +16,18 @@ const ICE_SERVERS = {
   iceCandidatePoolSize: 10,
 };
 
-// Audio constraints
+/* ================= MODERN AUDIO CONSTRAINTS ================= */
+
 const AUDIO_CONSTRAINTS = {
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
-  sampleRate: 48000,
+  audio: {
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: true },
+    channelCount: 1,
+    sampleRate: 48000,
+    sampleSize: 16,
+    latency: 0,
+  },
 };
 
 const useWebRTC = ({ socket, matchId, isCaller }) => {
@@ -35,16 +35,81 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const pendingCandidatesRef = useRef([]);
+  const audioContextRef = useRef(null);
+  const resetLockRef = useRef(false);
 
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [connectionState, setConnectionState] = useState("new");
   const [isMuted, setIsMuted] = useState(false);
   const [isMicReady, setIsMicReady] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
 
-  // Clean up everything
+  /* ================= CLEAN PROCESSING (NO ROBOTIC SOUND) ================= */
+
+  const processAudioStream = useCallback(async (inputStream) => {
+    try {
+      const audioContext = new AudioContext({ latencyHint: "interactive" });
+      audioContextRef.current = audioContext;
+
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+
+      const source = audioContext.createMediaStreamSource(inputStream);
+
+      // 🎯 Light Highpass (remove fan / rumble)
+      const highpass = audioContext.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 80;
+
+      // 🎯 Soft compressor (natural leveling)
+      const compressor = audioContext.createDynamicsCompressor();
+      compressor.threshold.value = -24;
+      compressor.knee.value = 30;
+      compressor.ratio.value = 3;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+
+      const destination = audioContext.createMediaStreamDestination();
+
+      source
+        .connect(highpass)
+        .connect(compressor)
+        .connect(analyser)
+        .connect(destination);
+
+      /* ===== Voice level detection ===== */
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const detectLevel = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+        setAudioLevel(sum / bufferLength);
+        requestAnimationFrame(detectLevel);
+      };
+      detectLevel();
+
+      return destination.stream;
+    } catch (err) {
+      console.error("Audio processing error:", err);
+      return inputStream;
+    }
+  }, []);
+
+  /* ================= CLEANUP ================= */
+
   const cleanup = useCallback(() => {
-    console.log("🧹 Cleaning up WebRTC");
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
 
     if (pcRef.current) {
       pcRef.current.close();
@@ -52,46 +117,46 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     }
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
       setLocalStream(null);
     }
 
     setRemoteStream(null);
     setIsMicReady(false);
-    pendingCandidatesRef.current = [];
     setConnectionState("closed");
   }, []);
 
-  // Get microphone
+  /* ================= MICROPHONE ================= */
+
   const getMicrophone = useCallback(async () => {
     try {
-      console.log("🎤 Getting microphone...");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: AUDIO_CONSTRAINTS
-      });
+      const rawStream = await navigator.mediaDevices.getUserMedia(
+        AUDIO_CONSTRAINTS
+      );
 
-      localStreamRef.current = stream;
-      setLocalStream(stream);
+      const processedStream = await processAudioStream(rawStream);
+
+      // ❌ DO NOT STOP rawStream (important)
+      localStreamRef.current = processedStream;
+      setLocalStream(processedStream);
       setIsMicReady(true);
-      console.log("✅ Microphone ready");
 
-      return stream;
+      return processedStream;
     } catch (err) {
-      console.error("❌ Microphone error:", err);
-      alert("Please allow microphone access");
+      console.error("Microphone error:", err);
       return null;
     }
-  }, []);
+  }, [processAudioStream]);
 
-  // Create peer connection
+  /* ================= PEER CONNECTION ================= */
+
   const createPeerConnection = useCallback(() => {
-    if (pcRef.current) {
-      pcRef.current.close();
-    }
+    if (pcRef.current) pcRef.current.close();
 
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
+    // 🔥 IMPORTANT: Send ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate && socket?.connected && matchId) {
         socket.emit("ice-candidate", {
@@ -102,23 +167,18 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     };
 
     pc.ontrack = (event) => {
-      console.log("📥 Remote track received");
       const [stream] = event.streams;
       remoteStreamRef.current = stream;
       setRemoteStream(stream);
     };
 
     pc.oniceconnectionstatechange = () => {
-      const state = pc.iceConnectionState;
-      console.log("❄️ ICE State:", state);
-      setConnectionState(state);
+      setConnectionState(pc.iceConnectionState);
     };
 
     pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      console.log("🔌 Connection State:", state);
-
-      if (state === "failed" || state === "closed") {
+      setConnectionState(pc.connectionState);
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
         cleanup();
       }
     };
@@ -127,108 +187,67 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     return pc;
   }, [socket, matchId, cleanup]);
 
-  // Start call (caller only)
+  /* ================= START CALL ================= */
+
   const startCall = useCallback(async () => {
-    if (!isCaller) {
-      console.log("⏳ Not caller, waiting for offer");
-      return;
-    }
+    if (!isCaller || !socket?.connected || !matchId) return;
 
-    if (!socket?.connected || !matchId) {
-      console.log("❌ Cannot start call - no socket or matchId");
-      return;
-    }
-
-    console.log("📞 Starting call as caller...");
-
-    // Get microphone
+    const pc = createPeerConnection();
     const stream = await getMicrophone();
     if (!stream) return;
 
-    // Create peer connection
-    const pc = createPeerConnection();
-
-    // Add tracks
-    stream.getTracks().forEach(track => {
+    stream.getTracks().forEach((track) => {
       pc.addTrack(track, stream);
     });
 
-    // Create and send offer
-    try {
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-      });
-
-      await pc.setLocalDescription(offer);
-      console.log("📤 Sending offer");
-      socket.emit("offer", { matchId, offer });
-
-    } catch (err) {
-      console.error("❌ Error creating offer:", err);
+    // 🎯 High Quality Opus Bitrate
+    const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
+    if (sender) {
+      const params = sender.getParameters();
+      if (!params.encodings) params.encodings = [{}];
+      params.encodings[0].maxBitrate = 128000; // 128kbps
+      await sender.setParameters(params).catch(e => console.log("Bitrate setting failed:", e));
     }
+
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      voiceActivityDetection: true,
+    });
+
+    await pc.setLocalDescription(offer);
+    socket.emit("offer", { matchId, offer });
   }, [isCaller, socket, matchId, getMicrophone, createPeerConnection]);
 
-  // Handle signaling
+  /* ================= SIGNALING ================= */
+
   useEffect(() => {
     if (!socket) return;
 
     const handleOffer = async ({ offer }) => {
       if (isCaller) return;
 
-      console.log("📥 Offer received");
-
-      // Get microphone
+      const pc = createPeerConnection();
       const stream = await getMicrophone();
       if (!stream) return;
 
-      // Create peer connection
-      const pc = createPeerConnection();
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-      // Add tracks
-      stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
-      });
-
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-        // Add pending candidates
-        for (const candidate of pendingCandidatesRef.current) {
-          await pc.addIceCandidate(candidate);
-        }
-        pendingCandidatesRef.current = [];
-
-        // Create answer
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        console.log("📤 Sending answer");
-        socket.emit("answer", { matchId, answer });
-
-      } catch (err) {
-        console.error("❌ Error handling offer:", err);
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      for (const c of pendingCandidatesRef.current) {
+        await pc.addIceCandidate(c);
       }
+      pendingCandidatesRef.current = [];
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socket.emit("answer", { matchId, answer });
     };
 
     const handleAnswer = async ({ answer }) => {
       if (!pcRef.current) return;
-
-      console.log("📥 Answer received");
-
-      try {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-
-        // Add pending candidates
-        for (const candidate of pendingCandidatesRef.current) {
-          await pcRef.current.addIceCandidate(candidate);
-        }
-        pendingCandidatesRef.current = [];
-
-        console.log("✅ WebRTC connected!");
-
-      } catch (err) {
-        console.error("❌ Error handling answer:", err);
-      }
+      await pcRef.current.setRemoteDescription(
+        new RTCSessionDescription(answer)
+      );
     };
 
     const handleIceCandidate = async ({ candidate }) => {
@@ -238,18 +257,13 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
       }
 
       if (pcRef.current.remoteDescription) {
-        try {
-          await pcRef.current.addIceCandidate(candidate);
-        } catch (err) {
-          console.log("⚠️ Error adding ICE candidate:", err);
-        }
+        await pcRef.current.addIceCandidate(candidate).catch(e => console.log("ICE add error:", e));
       } else {
         pendingCandidatesRef.current.push(candidate);
       }
     };
 
     const handleCallEnded = () => {
-      console.log("🔚 Call ended by server");
       cleanup();
     };
 
@@ -268,85 +282,15 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     };
   }, [socket, isCaller, matchId, getMicrophone, createPeerConnection, cleanup]);
 
-  // Mute toggle
+  /* ================= MUTE ================= */
+
   const toggleMute = useCallback(() => {
     if (localStreamRef.current) {
       const track = localStreamRef.current.getAudioTracks()[0];
-      if (track) {
-        track.enabled = !track.enabled;
-        setIsMuted(!track.enabled);
-      }
+      track.enabled = !track.enabled;
+      setIsMuted(!track.enabled);
     }
   }, []);
-
-  const replaceMicrophone = useCallback(async (deviceId) => {
-    if (!pcRef.current) return;
-
-    console.log("🎤 Replacing microphone...");
-
-    const newStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        ...AUDIO_CONSTRAINTS,
-        deviceId: { exact: deviceId }
-      }
-    });
-
-    const newTrack = newStream.getAudioTracks()[0];
-
-    const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
-    if (sender) {
-      await sender.replaceTrack(newTrack); // 👈 This keeps the connection alive!
-    }
-
-    if (sender) {
-      await sender.replaceTrack(newTrack);
-      console.log("✅ Track replaced successfully");
-    }
-
-    // Stop old tracks
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => t.stop());
-    }
-
-    localStreamRef.current = newStream;
-    setLocalStream(newStream);
-
-  }, []);
-
-
-  // Reset function for new calls
-  /* =======================
-   RESET CALL STATE - FIXED
-======================= */
-
-  const resetCall = useCallback(() => {
-    // 🔥 FIX: Add lock to prevent multiple resets
-    if (resetLockRef.current) {
-      console.log("🔒 Reset already in progress, skipping");
-      return;
-    }
-
-    resetLockRef.current = true;
-    console.log("🔄 Resetting WebRTC for new call");
-
-    cleanup();
-
-    // Release lock after reset
-    setTimeout(() => {
-      resetLockRef.current = false;
-    }, 500);
-
-  }, [cleanup]);
-
-  // Add this ref at the top with other refs
-  const resetLockRef = useRef(false);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanup();
-    };
-  }, [cleanup]);
 
   return {
     localStream,
@@ -356,9 +300,7 @@ const useWebRTC = ({ socket, matchId, isCaller }) => {
     isMuted,
     isMicReady,
     connectionState,
-    resetCall,
-    replaceMicrophone,
-    peerConnection: pcRef.current,
+    audioLevel,
   };
 };
 
